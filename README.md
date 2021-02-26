@@ -2,7 +2,7 @@ Another reimplementation of [Object-Centric Learning with Slot Attention](https:
 
 Original TFv2 implementation is at https://github.com/google-research/google-research/tree/master/slot_attention/
 
-Training loop code is adapted from https://github.com/google-research/google-research/tree/master/slot_attention/
+Training loop code is adapted from https://github.com/evelinehong/slot-attention-pytorch/ by Yinin Hong
 
 ```shell
 wget https://dl.fbaipublicfiles.com/clevr/CLEVR_v1.0.zip
