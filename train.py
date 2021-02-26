@@ -63,7 +63,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_dir', default='./checkpoints', type=str, help='where to save models' )
     parser.add_argument('--seed', default=0, type=int, help='Random seed.')
-    parser.add_argument('--batch_size', default=16, type=int, help='Batch size for the model.') # 64
+    parser.add_argument('--batch_size', default=64, type=int, help='Batch size for the model.')
     parser.add_argument('--num_slots', default=7, type=int, help='Number of slots in Slot Attention.')
     parser.add_argument('--num_iterations', default=3, type=int, help='Number of attention iterations.')
     parser.add_argument('--num_train_steps', default=500000, type=int, help='Number of training steps.')
