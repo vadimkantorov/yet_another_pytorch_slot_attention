@@ -1,4 +1,4 @@
-Another reimplementation of [Object-Centric Learning with Slot Attention](https://arxiv.org/abs/2006.15055) by Locatello et al.
+Another reimplementation of [Object-Centric Learning with Slot Attention](https://arxiv.org/abs/2006.15055) by Locatello et al (Ojbect Discovery task).
 
 Original TFv2 implementation is at https://github.com/google-research/google-research/tree/master/slot_attention/
 
