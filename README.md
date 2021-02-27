@@ -5,16 +5,16 @@ Original TFv2 implementation is at https://github.com/google-research/google-res
 Training loop code is adapted from https://github.com/evelinehong/slot-attention-pytorch/ by Yining Hong
 
 ```shell
-# download CLEVR dataset (18 Gb)
-wget https://dl.fbaipublicfiles.com/clevr/CLEVR_v1.0.zip
-unzip CLEVR_v1.0.zip
-
-# train the model on GPU
-python train.py
-
 # download original checkpoint (converted to PyTorch)
 wget https://github.com/vadimkantorov/yet_another_pytorch_slot_attention/releases/download/data/slot-attention_object_discovery.pt
 
 # infer on CPU with original checkpoint
 python infer.py --checkpoint_tensorflow slot-attention_object_discovery.pt
+
+# download CLEVR dataset (18 Gb)
+wget https://dl.fbaipublicfiles.com/clevr/CLEVR_v1.0.zip
+unzip CLEVR_v1.0.zip
+
+# and train the model on GPU from scratch
+python train.py
 ```
