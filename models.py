@@ -32,12 +32,12 @@ class SlotAttentionEncoder(nn.Sequential):
 class SlotAttentionDecoder(nn.Sequential):
     def __init__(self, hidden_dim = 64, output_dim = 4, kernel_size = 5, padding = 2, stride = 2, output_kernel_size = 3, output_padding = 1):
         super().__init__(
-            nn.ConvTranspose2d(hidden_dim, hidden_dim, kernel_size = kernel_size, stride = stride, padding = 1), nn.ReLU(inplace = True),
-            nn.ConvTranspose2d(hidden_dim, hidden_dim, kernel_size = kernel_size, stride = stride, padding = 1), nn.ReLU(inplace = True),
-            nn.ConvTranspose2d(hidden_dim, hidden_dim, kernel_size = kernel_size, stride = stride, padding = 1), nn.ReLU(inplace = True),
-            nn.ConvTranspose2d(hidden_dim, hidden_dim, kernel_size = kernel_size, stride = stride, padding = 1), nn.ReLU(inplace = True),
-            nn.ConvTranspose2d(hidden_dim, hidden_dim, kernel_size = kernel_size), nn.ReLU(inplace = True),
-            nn.ConvTranspose2d(hidden_dim, output_dim, kernel_size = output_kernel_size)
+            nn.ConvTranspose2d(hidden_dim, hidden_dim, kernel_size = kernel_size, stride = stride, padding = 1), nn.ReLU(inplace = True), # 3
+            nn.ConvTranspose2d(hidden_dim, hidden_dim, kernel_size = kernel_size, stride = stride, padding = 1), nn.ReLU(inplace = True), # 2
+            nn.ConvTranspose2d(hidden_dim, hidden_dim, kernel_size = kernel_size, stride = stride, padding = 1), nn.ReLU(inplace = True), # 2
+            nn.ConvTranspose2d(hidden_dim, hidden_dim, kernel_size = kernel_size, stride = stride, padding = 1), nn.ReLU(inplace = True), # 3
+            nn.ConvTranspose2d(hidden_dim, hidden_dim, kernel_size = kernel_size), nn.ReLU(inplace = True), # 1
+            nn.ConvTranspose2d(hidden_dim, output_dim, kernel_size = output_kernel_size) # 1
         )
 
 class SoftPositionEmbed(nn.Module):
@@ -117,7 +117,7 @@ class SlotAttention(nn.Module):
         self.slots_mu        = nn.Parameter(nn.init.xavier_uniform_(torch.empty(1, 1, self.slot_size)))
         self.slots_log_sigma = nn.Parameter(nn.init.xavier_uniform_(torch.empty(1, 1, self.slot_size)))
         
-        self.project_q = nn.Linear(slot_size, slot_size, bias = False)
+        self.project_q = nn.Linear(slot_size , slot_size, bias = False)
         self.project_k = nn.Linear(input_size, slot_size, bias = False)
         self.project_v = nn.Linear(input_size, slot_size, bias = False)
         
