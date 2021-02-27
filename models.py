@@ -44,7 +44,7 @@ class SoftPositionEmbed(nn.Module):
     def __init__(self, hidden_dim, resolution):
         super().__init__()
         self.dense = nn.Linear(4, hidden_dim)
-        grid = torch.as_tensor(np.stack(np.meshgrid(*[np.linspace(0., 1., num=res) for res in resolution], sparse=False, indexing="ij"), axis=-1)).to(torch.float32)
+        grid = torch.as_tensor(np.stack(np.meshgrid(*[np.linspace(0., 1., num = res) for res in resolution], indexing = 'ij'), axis = -1)).to(torch.float32)
         grid = grid.reshape(1, resolution[0], resolution[1], -1)
         grid = torch.cat([grid, 1 - grid], dim = -1)
         self.register_buffer('grid', grid)
