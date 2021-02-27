@@ -18,7 +18,20 @@ def main(args):
     model = models.SlotAttentionAutoEncoder(resolution = args.resolution, num_slots = args.num_slots, num_iterations = args.num_iterations, hidden_dim = args.hidden_dim).to(args.device)
     criterion = nn.MSELoss()
 
-    # model.load_state_dict(torch.load('./tmp/model6.ckpt')['model_state_dict'])
+    if args.checkpoint_tensorflow:
+        # converted with https://github.com/vadimkantorov/tfcheckpoint2pytorch
+        # checkpoint format: https://www.tensorflow.org/guide/checkpoint
+        
+        ckpt = torch.load(args.checkpoint_tensorflow, map_location = 'cpu')
+        ckpt = { k.replace('network/layer_with_weights-0/', '').replace('/.ATTRIBUTES/VARIABLE_VALUE', '').replace('/', '_') : v for k, v in ckpt.items() if k.startswith('network/layer_with_weights-0/') and k.endswith('.ATTRIBUTES/VARIABLE_VALUE') and '.OPTIMIZER_SLOT' not in k }
+        ckpt = { k.replace('encoder_cnn_layer_with_weights-', 'encoder_cnn.').replace('decoder_cnn_layer_with_weights-', 'decoder_cnn.').replace('slot_attention_', 'slot_attention.').replace('mlp_layer_with_weights-', 'mlp.').replace('encoder_pos_', 'encoder_pos.').replace('decoder_pos_', 'decoder_pos.').replace('_kernel', '.weight').replace('_bias', '.bias').replace('_gamma', '.weight').replace('_beta', '.bias') : v for k, v in ckpt.items()}
+        ckpt = { ('.'.join(k.split('.')[:-2] + [str(int(k.split('.')[-2]) * 2), k.split('.')[-1]]) if 'encoder_cnn.' in k or 'decoder_cnn.' in k or k.startswith('mlp.') or 'slot_attention.mlp.' in k else k) : v for k, v in ckpt.items() }
+        
+        model_state_dict = ckpt
+        model.load_state_dict(model_state_dict)
+
+    if args.checkpoint:
+        model.load_state_dict(torch.load(argc.checkpoint, map_location = 'cpu')['model_state_dict'])
 
 
     train_dataloader = torch.utils.data.DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
@@ -79,6 +92,7 @@ if __name__ == '__main__':
     parser.add_argument('--resolution', type = int, nargs = 2, default = (128, 128))
     parser.add_argument('--crop', type = int, nargs = 4, default = (29, 221, 64, 256))
     parser.add_argument('--dataset_root_dir', default = './CLEVR_v1.0')
+    parser.add_argument('--checkpoint_tensorflow')
     args = parser.parse_args()
 
     main(args)
