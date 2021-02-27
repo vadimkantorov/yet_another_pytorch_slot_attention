@@ -6,6 +6,19 @@ import models
 import clevr
 import train
 
+def renormalize(x):
+    """Renormalize from [-1, 1] to [0, 1]."""
+    return x / 2. + 0.5
+
+def get_prediction(model, batch, idx=0):
+    recon_combined, recons, masks, slots = map(lambda t: t.cpu(), model(batch))
+
+    image = renormalize(batch)[idx]
+    recon_combined = renormalize(recon_combined)[idx]
+    recons = renormalize(recons)[idx]
+    masks = masks[idx]
+    return [t.movedim(-3, -1) for t in [image, recon_combined, recons, masks, slots]]
+
 @torch.no_grad()
 def main(args):
     frontend = models.ImagePreprocessor(resolution = args.resolution, crop = args.crop)
@@ -25,18 +38,19 @@ def main(args):
 
     basename, image = test_set[2]
     image = image.unsqueeze(0).to(args.device)
-    image = frontend(image)
+    batch = frontend(image)
+    num_slots = args.num_slots
 
-    recon_combined, recons, masks, slots = model(image)
+    # Predict.
+    image, recon_combined, recons, masks, slots = get_prediction(model, batch)
 
-    recon_combined, recons, masks, image = map(lambda t: t.cpu().movedim(-3, -1).squeeze(0), [recon_combined, recons, masks, image])
-
-    fig, ax = plt.subplots(1, args.num_slots + 2, figsize=(15, 2))
+    # Visualize.
+    fig, ax = plt.subplots(1, num_slots + 2, figsize=(15, 2))
     ax[0].imshow(image)
     ax[0].set_title('Image')
     ax[1].imshow(recon_combined)
     ax[1].set_title('Recon.')
-    for i in range(args.num_slots):
+    for i in range(num_slots):
       picture = recons[i] * masks[i] + (1 - masks[i])
       ax[i + 2].imshow(picture)
       ax[i + 2].set_title('Slot %s' % str(i + 1))

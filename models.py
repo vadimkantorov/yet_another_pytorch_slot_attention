@@ -10,8 +10,8 @@ class ImagePreprocessor(nn.Module):
         self.crop = crop
         
     def forward(self, image):
-        image = image.to(torch.float32)
-        image = image.div_(255.0).sub_(0.5).mul_(2.0)
+        assert image.is_floating_point()
+        image = image.sub_(0.5).mul_(2.0)
 
         if self.crop:
             image = image[..., self.crop[0]:self.crop[1], self.crop[2]:self.crop[3]]
