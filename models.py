@@ -59,34 +59,32 @@ class SlotAttentionAutoEncoder(nn.Module):
         self.resolution = resolution
         self.num_slots = num_slots
         self.num_iterations = num_iterations
-    
-        self.encoder_cnn = SlotAttentionEncoder()
-        
         self.decoder_initial_size = decoder_initial_size
         self.hidden_dim = hidden_dim
-
-        self.decoder_cnn = SlotAttentionDecoder()
-
+        
+        self.encoder_cnn = SlotAttentionEncoder()
         self.encoder_pos = SoftPositionEmbed(self.hidden_dim, self.resolution)
-        self.decoder_pos = SoftPositionEmbed(self.hidden_dim, self.decoder_initial_size)
-
+        
         self.layer_norm = nn.LayerNorm(self.hidden_dim)
         self.mlp = nn.Sequential(
             nn.Linear(self.hidden_dim, self.hidden_dim),
             nn.ReLU(inplace = True),
             nn.Linear(self.hidden_dim, self.hidden_dim)
         )
-
+        
         self.slot_attention = SlotAttention(
             num_iter = self.num_iterations,
             num_slots = self.num_slots,
             input_size = self.hidden_dim,
             slot_size = 64,
             mlp_hidden_size = 128)
+        
+        self.decoder_pos = SoftPositionEmbed(self.hidden_dim, self.decoder_initial_size)
+        self.decoder_cnn = SlotAttentionDecoder()
 
     def forward(self, image):
-        x = self.encoder_cnn(image)
-        x = self.encoder_pos(x.movedim(1, -1))
+        x = self.encoder_cnn(image).movedim(1, -1)
+        x = self.encoder_pos(x)
         x = self.mlp(self.layer_norm(x))
         
         slots = self.slot_attention(x.flatten(start_dim = 1, end_dim = 2))
