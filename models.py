@@ -150,8 +150,7 @@ class SlotAttention(nn.Module):
             
             attn_logits = torch.bmm(q, k.transpose(-1, -2))
 
-            temperature = 1
-            attn = F.softmax(attn_logits / temperature, dim = 1)
+            attn = F.softmax(attn_logits, dim = 1)
             attn = attn + self.epsilon
 
             bincount = attn.sum(dim = -1, keepdim = True)
