@@ -8,7 +8,6 @@ import torch.nn as nn
 
 import models
 import clevr
-import torchvision
 
 def rename_and_transpose_tfcheckpoint(ckpt):
     # checkpoint format: https://www.tensorflow.org/guide/checkpoint
@@ -21,7 +20,7 @@ def rename_and_transpose_tfcheckpoint(ckpt):
 def main(args):
     os.makedirs(args.model_dir, exist_ok = True)
 
-    train_set = clevr.CLEVR(args.dataset_root_dir, 'train', transform = torchvision.transforms.ToTensor(), filter = lambda scene_objects: len(scene_objects) <= 6)
+    train_set = clevr.CLEVR(args.dataset_root_dir, 'train', filter = lambda scene_objects: len(scene_objects) <= 6)
     frontend = models.ImagePreprocessor(resolution = args.resolution, crop = args.crop)
     model = models.SlotAttentionAutoEncoder(resolution = args.resolution, num_slots = args.num_slots, num_iterations = args.num_iterations, hidden_dim = args.hidden_dim).to(args.device)
     criterion = nn.MSELoss()
@@ -96,6 +95,7 @@ if __name__ == '__main__':
     parser.add_argument('--resolution', type = int, nargs = 2, default = (128, 128))
     parser.add_argument('--crop', type = int, nargs = 4, default = (29, 221, 64, 256))
     parser.add_argument('--dataset_root_dir', default = './CLEVR_v1.0')
+    parser.add_argument('--checkpoint')
     parser.add_argument('--checkpoint_tensorflow')
     args = parser.parse_args()
 

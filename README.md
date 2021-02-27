@@ -14,4 +14,7 @@ python train.py
 
 # download original checkpoint (converted to PyTorch)
 wget https://github.com/vadimkantorov/yet_another_pytorch_slot_attention/releases/download/data/slot-attention_object_discovery.pt
+
+# infer on CPU with original checkpoint
+python infer.py --checkpoint_tensorflow slot-attention_object_discovery.pt
 ```
