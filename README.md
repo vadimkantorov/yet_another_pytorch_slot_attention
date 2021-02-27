@@ -9,12 +9,12 @@ Training loop code is adapted from https://github.com/evelinehong/slot-attention
 wget https://github.com/vadimkantorov/yet_another_pytorch_slot_attention/releases/download/data/slot-attention_object_discovery.pt
 
 # infer on CPU with original checkpoint
-python infer.py --checkpoint_tensorflow slot-attention_object_discovery.pt
+python infer.py --device cpu --checkpoint_tensorflow slot-attention_object_discovery.pt
 
 # download CLEVR dataset (18 Gb)
 wget https://dl.fbaipublicfiles.com/clevr/CLEVR_v1.0.zip
 unzip CLEVR_v1.0.zip
 
 # and train the model on GPU from scratch
-python train.py
+python train.py --device cuda
 ```
