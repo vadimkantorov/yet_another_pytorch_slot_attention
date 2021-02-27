@@ -11,7 +11,7 @@ class ImagePreprocessor(nn.Module):
         
     def forward(self, image):
         assert image.is_floating_point()
-        image = image.sub_(0.5).mul_(2.0)
+        image = (image - 0.5) * 2
 
         if self.crop:
             image = image[..., self.crop[0]:self.crop[1], self.crop[2]:self.crop[3]]
