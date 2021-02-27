@@ -34,7 +34,7 @@ def main(args):
         status = model.load_state_dict(model_state_dict, strict = False)
         assert set(status.missing_keys) == set(['encoder_pos.grid', 'decoder_pos.grid'])
 
-    test_set = clevr.CLEVR(args.dataset_root_dir, 'test')
+    test_set = clevr.CLEVR(args.dataset_root_dir, 'val', filter = lambda scene_objects: len(scene_objects) <= 6)
 
     basename, image = test_set[2]
     image = image.unsqueeze(0).to(args.device)
