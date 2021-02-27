@@ -24,13 +24,8 @@ def main(args):
     frontend = models.ImagePreprocessor(resolution = args.resolution, crop = args.crop)
     model = models.SlotAttentionAutoEncoder(resolution = args.resolution, num_slots = args.num_slots, num_iterations = args.num_iterations, hidden_dim = args.hidden_dim).to(args.device)
         
-    if args.checkpoint_tensorflow:
-        model_state_dict = train.rename_and_transpose_tfcheckpoint(torch.load(args.checkpoint_tensorflow, map_location = 'cpu'))
-        status = model.load_state_dict(model_state_dict, strict = False)
-        assert set(status.missing_keys) == set(['encoder_pos.grid', 'decoder_pos.grid'])
-
-    if args.checkpoint:
-        model_state_dict = torch.load(args.checkpoint, map_location = 'cpu')['model_state_dict']
+    if args.checkpoint or args.checkpoint_tensorflow:
+        model_state_dict = torch.load(args.checkpoint, map_location = 'cpu')['model_state_dict'] if args.checkpoint else train.rename_and_transpose_tfcheckpoint(torch.load(args.checkpoint_tensorflow, map_location = 'cpu')) 
         status = model.load_state_dict(model_state_dict, strict = False)
         assert set(status.missing_keys) == set(['encoder_pos.grid', 'decoder_pos.grid'])
 

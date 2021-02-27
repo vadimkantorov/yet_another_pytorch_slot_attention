@@ -10,9 +10,28 @@ import models
 import clevr
 
 def rename_and_transpose_tfcheckpoint(ckpt):
+    # converted with https://github.com/vadimkantorov/tfcheckpoint2pytorch
     # checkpoint format: https://www.tensorflow.org/guide/checkpoint
-    ckpt = { k.replace('network/layer_with_weights-0/', '').replace('/.ATTRIBUTES/VARIABLE_VALUE', '').replace('/', '_') : v for k, v in ckpt.items() if k.startswith('network/layer_with_weights-0/') and k.endswith('.ATTRIBUTES/VARIABLE_VALUE') and '.OPTIMIZER_SLOT' not in k }
-    ckpt = { k.replace('encoder_cnn_layer_with_weights-', 'encoder_cnn.').replace('decoder_cnn_layer_with_weights-', 'decoder_cnn.').replace('slot_attention_', 'slot_attention.').replace('mlp_layer_with_weights-', 'mlp.').replace('encoder_pos_', 'encoder_pos.').replace('decoder_pos_', 'decoder_pos.').replace('_kernel', '.weight').replace('_bias', '.bias').replace('_gamma', '.weight').replace('_beta', '.bias').replace('slot_attention.gru.weight', 'slot_attention.gru.weight_ih').replace('slot_attention.gru_recurrent.weight', 'slot_attention.gru.weight_hh') : v for k, v in ckpt.items()}
+   
+    replace = {
+        'network/layer_with_weights-0/': '',
+        '/.ATTRIBUTES/VARIABLE_VALUE': '',
+        '/': '_',
+        'encoder_cnn_layer_with_weights-': 'encoder_cnn.',
+        'decoder_cnn_layer_with_weights-': 'decoder_cnn.',
+        'slot_attention_': 'slot_attention.',
+        'mlp_layer_with_weights-': 'mlp.',
+        'encoder_pos_': 'encoder_pos.',
+        'decoder_pos_': 'decoder_pos.',
+        '_kernel': '.weight',
+        '_bias': '.bias',
+        '_gamma': '.weight',
+        '_beta': '.bias',
+        'slot_attention.gru.weight': 'slot_attention.gru.weight_ih',
+        'slot_attention.gru_recurrent.weight': 'slot_attention.gru.weight_hh'
+    }
+    
+    ckpt = {functools.reduce(lambda acc, from_to: acc.replace(*from_to), replace.items(), k) : v for k, v in ckpt.items() if k.startswith('network/layer_with_weights-0/') and k.endswith('.ATTRIBUTES/VARIABLE_VALUE') and '.OPTIMIZER_SLOT' not in k}
     ckpt = { ('.'.join(k.split('.')[:-2] + [str(int(k.split('.')[-2]) * 2), k.split('.')[-1]]) if 'encoder_cnn.' in k or 'decoder_cnn.' in k or k.startswith('mlp.') or 'slot_attention.mlp.' in k else k) : v for k, v in ckpt.items() }
     ckpt['slot_attention.gru.bias_ih'], ckpt['slot_attention.gru.bias_hh'] = ckpt.pop('slot_attention.gru.bias').unbind()
     return {k : v.permute(3, 2, 0, 1) if v.ndim == 4 else v.t() if v.ndim == 2 else v for k, v in ckpt.items()}
@@ -24,18 +43,11 @@ def main(args):
     frontend = models.ImagePreprocessor(resolution = args.resolution, crop = args.crop)
     model = models.SlotAttentionAutoEncoder(resolution = args.resolution, num_slots = args.num_slots, num_iterations = args.num_iterations, hidden_dim = args.hidden_dim).to(args.device)
     criterion = nn.MSELoss()
-
-    if args.checkpoint_tensorflow:
-        # converted with https://github.com/vadimkantorov/tfcheckpoint2pytorch
-        model_state_dict = rename_and_transpose_tfcheckpoint(torch.load(args.checkpoint_tensorflow, map_location = 'cpu'))
+    
+    if args.checkpoint or args.checkpoint_tensorflow:
+        model_state_dict = torch.load(args.checkpoint, map_location = 'cpu')['model_state_dict'] if args.checkpoint else train.rename_and_transpose_tfcheckpoint(torch.load(args.checkpoint_tensorflow, map_location = 'cpu')) 
         status = model.load_state_dict(model_state_dict, strict = False)
         assert set(status.missing_keys) == set(['encoder_pos.grid', 'decoder_pos.grid'])
-
-    if args.checkpoint:
-        model_state_dict = torch.load(args.checkpoint, map_location = 'cpu')['model_state_dict']
-        status = model.load_state_dict(model_state_dict, strict = False)
-        assert set(status.missing_keys) == set(['encoder_pos.grid', 'decoder_pos.grid'])
-
 
     train_dataloader = torch.utils.data.DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
 
