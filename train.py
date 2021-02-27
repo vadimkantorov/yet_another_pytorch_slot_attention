@@ -10,6 +10,14 @@ import models
 import clevr
 import torchvision
 
+def rename_and_transpose_tfcheckpoint(ckpt):
+    # checkpoint format: https://www.tensorflow.org/guide/checkpoint
+    ckpt = { k.replace('network/layer_with_weights-0/', '').replace('/.ATTRIBUTES/VARIABLE_VALUE', '').replace('/', '_') : v for k, v in ckpt.items() if k.startswith('network/layer_with_weights-0/') and k.endswith('.ATTRIBUTES/VARIABLE_VALUE') and '.OPTIMIZER_SLOT' not in k }
+    ckpt = { k.replace('encoder_cnn_layer_with_weights-', 'encoder_cnn.').replace('decoder_cnn_layer_with_weights-', 'decoder_cnn.').replace('slot_attention_', 'slot_attention.').replace('mlp_layer_with_weights-', 'mlp.').replace('encoder_pos_', 'encoder_pos.').replace('decoder_pos_', 'decoder_pos.').replace('_kernel', '.weight').replace('_bias', '.bias').replace('_gamma', '.weight').replace('_beta', '.bias').replace('slot_attention.gru.weight', 'slot_attention.gru.weight_ih').replace('slot_attention.gru_recurrent.weight', 'slot_attention.gru.weight_hh') : v for k, v in ckpt.items()}
+    ckpt = { ('.'.join(k.split('.')[:-2] + [str(int(k.split('.')[-2]) * 2), k.split('.')[-1]]) if 'encoder_cnn.' in k or 'decoder_cnn.' in k or k.startswith('mlp.') or 'slot_attention.mlp.' in k else k) : v for k, v in ckpt.items() }
+    ckpt['slot_attention.gru.bias_ih'], ckpt['slot_attention.gru.bias_hh'] = ckpt.pop('slot_attention.gru.bias').unbind()
+    return {k : v.permute(3, 2, 0, 1) if v.ndim == 4 else v.t() if v.ndim == 2 else v for k, v in ckpt.items()}
+
 def main(args):
     os.makedirs(args.model_dir, exist_ok = True)
 
@@ -20,20 +28,13 @@ def main(args):
 
     if args.checkpoint_tensorflow:
         # converted with https://github.com/vadimkantorov/tfcheckpoint2pytorch
-        # checkpoint format: https://www.tensorflow.org/guide/checkpoint
-        
-        ckpt = torch.load(args.checkpoint_tensorflow, map_location = 'cpu')
-        ckpt = { k.replace('network/layer_with_weights-0/', '').replace('/.ATTRIBUTES/VARIABLE_VALUE', '').replace('/', '_') : v for k, v in ckpt.items() if k.startswith('network/layer_with_weights-0/') and k.endswith('.ATTRIBUTES/VARIABLE_VALUE') and '.OPTIMIZER_SLOT' not in k }
-        ckpt = { k.replace('encoder_cnn_layer_with_weights-', 'encoder_cnn.').replace('decoder_cnn_layer_with_weights-', 'decoder_cnn.').replace('slot_attention_', 'slot_attention.').replace('mlp_layer_with_weights-', 'mlp.').replace('encoder_pos_', 'encoder_pos.').replace('decoder_pos_', 'decoder_pos.').replace('_kernel', '.weight').replace('_bias', '.bias').replace('_gamma', '.weight').replace('_beta', '.bias').replace('slot_attention.gru.weight', 'slot_attention.gru.weight_ih').replace('slot_attention.gru_recurrent.weight', 'slot_attention.gru.weight_hh') : v for k, v in ckpt.items()}
-        ckpt = { ('.'.join(k.split('.')[:-2] + [str(int(k.split('.')[-2]) * 2), k.split('.')[-1]]) if 'encoder_cnn.' in k or 'decoder_cnn.' in k or k.startswith('mlp.') or 'slot_attention.mlp.' in k else k) : v for k, v in ckpt.items() }
-        ckpt['slot_attention.gru.bias_ih'], ckpt['slot_attention.gru.bias_hh'] = ckpt.pop('slot_attention.gru.bias').unbind()
-        
-        model_state_dict = {k : v.permute(3, 2, 0, 1) if v.ndim == 4 else v.t() if v.ndim == 2 else v for k, v in ckpt.items()}
+        model_state_dict = rename_and_transpose_tfcheckpoint(torch.load(args.checkpoint_tensorflow, map_location = 'cpu'))
         status = model.load_state_dict(model_state_dict, strict = False)
         assert set(status.missing_keys) == set(['encoder_pos.grid', 'decoder_pos.grid'])
 
     if args.checkpoint:
-        status = model.load_state_dict(torch.load(argc.checkpoint, map_location = 'cpu')['model_state_dict'], strict = False)
+        model_state_dict = torch.load(args.checkpoint, map_location = 'cpu')['model_state_dict']
+        status = model.load_state_dict(model_state_dict, strict = False)
         assert set(status.missing_keys) == set(['encoder_pos.grid', 'decoder_pos.grid'])
 
 
