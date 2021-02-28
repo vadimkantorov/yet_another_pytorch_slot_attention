@@ -100,8 +100,8 @@ if __name__ == '__main__':
     parser.add_argument('--decay_rate', default=0.5, type=float, help='Rate for the learning rate decay.')
     parser.add_argument('--decay_steps', default=100000, type=int, help='Number of steps for the learning rate decay.')
 
-    parser.add_argument('--num_workers', default=4, type=int, help='number of workers for loading data')
-    parser.add_argument('--num_epochs', default=1000, type=int, help='number of workers for loading data')
+    parser.add_argument('--num_workers', default=16, type=int, help='number of workers for loading data')
+    parser.add_argument('--num_epochs', default=10000, type=int, help='number of workers for loading data')
     parser.add_argument('--hidden_dim', default=64, type=int, help='hidden dimension size')
     parser.add_argument('--device', default = 'cuda', choices = ['cuda', 'cpu'])
     parser.add_argument('--resolution', type = int, nargs = 2, default = (128, 128))
