@@ -26,8 +26,9 @@ def main(args):
         
     if args.checkpoint or args.checkpoint_tensorflow:
         model_state_dict = torch.load(args.checkpoint, map_location = 'cpu')['model_state_dict'] if args.checkpoint else train.rename_and_transpose_tfcheckpoint(torch.load(args.checkpoint_tensorflow, map_location = 'cpu')) 
+        model_state_dict = {'.'.join(k.split('.')[1:]) if k.startswith('module.') else k : v for k, v in model_state_dict.items()}
         status = model.load_state_dict(model_state_dict, strict = False)
-        assert set(status.missing_keys) == set(['encoder_pos.grid', 'decoder_pos.grid'])
+        assert set(status.missing_keys) in [set(), set(['encoder_pos.grid', 'decoder_pos.grid'])]
 
     test_set = clevr.CLEVR(args.dataset_root_dir, 'val', filter = lambda scene_objects: len(scene_objects) <= 6)
 
@@ -54,6 +55,7 @@ def main(args):
       ax[i].axis('off')
 
     plt.savefig(args.savefig)
+    print(args.savefig)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

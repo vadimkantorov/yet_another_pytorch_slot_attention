@@ -11,10 +11,13 @@ wget https://github.com/vadimkantorov/yet_another_pytorch_slot_attention/release
 # infer on CPU with original checkpoint
 python infer.py --device cpu --checkpoint_tensorflow slot-attention_object_discovery.pt
 
-# download CLEVR dataset (18 Gb)
+# download original CLEVR dataset (18 Gb)
 wget https://dl.fbaipublicfiles.com/clevr/CLEVR_v1.0.zip
 unzip CLEVR_v1.0.zip
 
 # and train the model on GPU from scratch
 python train.py --device cuda
+
+# download CLEVRWithMasks (10 Gb)
+wget https://storage.googleapis.com/multi-object-datasets/clevr_with_masks/clevr_with_masks_train.tfrecords
 ```

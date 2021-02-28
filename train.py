@@ -51,7 +51,7 @@ def main(args):
     if args.checkpoint or args.checkpoint_tensorflow:
         model_state_dict = torch.load(args.checkpoint, map_location = 'cpu')['model_state_dict'] if args.checkpoint else train.rename_and_transpose_tfcheckpoint(torch.load(args.checkpoint_tensorflow, map_location = 'cpu')) 
         status = model.load_state_dict(model_state_dict, strict = False)
-        assert set(status.missing_keys) == set(['encoder_pos.grid', 'decoder_pos.grid'])
+        assert set(status.missing_keys) in [set(), set(['encoder_pos.grid', 'decoder_pos.grid'])]
 
     train_dataloader = torch.utils.data.DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
 
@@ -65,8 +65,6 @@ def main(args):
         total_loss = 0
 
         for i, (image_paths, images) in enumerate(train_dataloader):
-            iteration += 1
-
             learning_rate = (args.learning_rate * (iteration / args.warmup_steps) if iteration < args.warmup_steps else args.learning_rate) * (args.decay_rate ** (iteration / args.decay_steps))
 
             optimizer.param_groups[0]['lr'] = learning_rate
@@ -83,13 +81,15 @@ def main(args):
             loss.backward()
             optimizer.step()
             print('Epoch:', epoch, '#', iteration, '|', i, '/', len(train_dataloader), 'Loss:', loss_item)
+            iteration += 1
 
         total_loss /= len(train_dataloader)
 
         print ('Epoch:', epoch, 'Loss:', total_loss, 'Time:', datetime.timedelta(seconds = time.time() - start))
 
         if not epoch % args.checkpoint_epoch_interval:
-            torch.save(dict(model_state_dict = model.state_dict()), os.path.join(args.model_dir, args.checkpoint_pattern.format(epoch = epoch)))
+            model_state_dict = model.module.state_dict() if isinstance(model, nn.DataParallel) else model.state_dict()
+            torch.save(dict(model_state_dict = model_state_dict), os.path.join(args.model_dir, args.checkpoint_pattern.format(epoch = epoch)))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -114,7 +114,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataset-root-dir', default = './CLEVR_v1.0')
     parser.add_argument('--checkpoint')
     parser.add_argument('--checkpoint-epoch-interval', type = int, default = 10)
-    parser.add_argument('--checkpoint-pattern', default = 'ckpt_{:04d}.pt')
+    parser.add_argument('--checkpoint-pattern', default = 'ckpt_{epoch:04d}.pt')
     parser.add_argument('--checkpoint-tensorflow')
     args = parser.parse_args()
 
