@@ -51,7 +51,7 @@ def main(args):
 
     train_dataloader = torch.utils.data.DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
+    optimizer = torch.optim.Adam(model.parameters(), lr = args.learning_rate)
 
     start = time.time()
     iteration = 0
@@ -82,7 +82,7 @@ def main(args):
 
         total_loss /= len(train_dataloader)
 
-        print ("Epoch: {}, Loss: {}, Time: {}".format(epoch, total_loss, datetime.timedelta(seconds=time.time() - start)))
+        print ('Epoch:', epoch, 'Loss:', total_loss, 'Time:', datetime.timedelta(seconds = time.time() - start))
 
         if not epoch % 10:
             torch.save(dict(model_state_dict = model.state_dict()), args.model_dir)
