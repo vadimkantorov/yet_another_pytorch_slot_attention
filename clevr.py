@@ -1,6 +1,7 @@
 import os
 import json
 import torchvision
+import numpy as np
 
 class CLEVR(torchvision.datasets.VisionDataset):
     def __init__(self, root, split_name, transform = torchvision.transforms.ToTensor(), loader = torchvision.datasets.folder.default_loader, filter = None):
@@ -21,8 +22,16 @@ class CLEVR(torchvision.datasets.VisionDataset):
         return len(self.image_paths)
     
     def __getitem__(self, index):
-        path = self.image_paths[index]
-        sample = self.loader(path)
+        image_path = self.image_paths[index]
+        mask_path = image_path.replace('images', 'masks').replace('.png', '.npy')
+        
+        image = self.loader(image_path)
         if self.transform is not None:
-            sample = self.transform(sample)
-        return os.path.basename(path), sample
+            image = self.transform(image)
+
+        if os.path.exists(mask_path):
+            mask = torch.as_tensor(np.load(mask_path))
+        else:
+            mask = None
+        
+        return dict(image = image, mask = mask, image_name = os.path.basename(image_path))

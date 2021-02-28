@@ -64,7 +64,8 @@ def main(args):
 
         total_loss = 0
 
-        for i, (image_paths, images) in enumerate(train_dataloader):
+        for i, batch in enumerate(train_dataloader):
+            images = batch['image']
             learning_rate = (args.learning_rate * (iteration / args.warmup_steps) if iteration < args.warmup_steps else args.learning_rate) * (args.decay_rate ** (iteration / args.decay_steps))
 
             optimizer.param_groups[0]['lr'] = learning_rate

@@ -32,7 +32,7 @@ def main(args):
 
     test_set = clevr.CLEVR(args.dataset_root_dir, 'val', filter = lambda scene_objects: len(scene_objects) <= 6)
 
-    basename, image = test_set[2]
+    image = test_set[2]['image']
     image = image.unsqueeze(0).to(args.device)
     batch = frontend(image)
     num_slots = args.num_slots
