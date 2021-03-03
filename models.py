@@ -3,6 +3,79 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
+class SlotAttention(nn.Module):
+    def __init__(self, num_iter, num_slots, input_size, slot_size, mlp_hidden_size, epsilon=1e-8, simple = False, project_inputs = False, gain = 1, temperature_factor = 1):
+        super().__init__()
+        self.temperature_factor = temperature_factor
+        self.num_iter = num_iter
+        self.num_slots = num_slots
+        self.slot_size = slot_size
+        self.mlp_hidden_size = mlp_hidden_size
+        self.epsilon = epsilon
+        self.input_size = input_size
+
+        self.norm_inputs = nn.LayerNorm(input_size)
+        self.norm_slots  = nn.LayerNorm(slot_size)
+        self.norm_mlp    = nn.LayerNorm(slot_size)
+
+        self.slots_mu        = nn.Parameter(nn.init.xavier_uniform_(torch.empty(1, 1, self.slot_size)))
+        self.slots_log_sigma = nn.Parameter(nn.init.xavier_uniform_(torch.empty(1, 1, self.slot_size)))
+        
+        self.project_q = nn.Linear(slot_size, slot_size, bias = False)
+        self.project_k = nn.Linear(input_size, slot_size, bias = False)
+        self.project_v = nn.Linear(input_size, slot_size, bias = False)
+        
+        nn.init.xavier_uniform_(self.project_q.weight, gain = gain)
+        nn.init.xavier_uniform_(self.project_k.weight, gain = gain)
+        nn.init.xavier_uniform_(self.project_v.weight, gain = gain)
+
+        self.simple = simple
+        
+        if not self.simple:
+            self.gru = nn.GRUCell(slot_size, slot_size)
+            self.mlp = nn.Sequential(
+                nn.Linear(self.slot_size, self.mlp_hidden_size),
+                nn.ReLU(inplace = True),
+                nn.Linear(self.mlp_hidden_size, self.slot_size)
+            )
+        else:
+            assert slot_size == input_size
+            self.gru = lambda x, h, alpha = 0.5: h * alpha + x * (1 - alpha)
+            self.norm_mlp = nn.Identity()
+            self.mlp = torch.zeros_like
+        
+        self.project_x = nn.Linear(input_size, input_size) if project_inputs else nn.Identity()
+
+    def forward(self, inputs : 'BTC', num_iter = 0, slots : 'BSC' = None) -> '(BSC, BST, BST)':
+        inputs = self.project_x(inputs)
+
+        inputs = self.norm_inputs(inputs)
+        k = self.project_k(inputs)
+        v = self.project_v(inputs)
+       
+        if slots is None:
+            slots = self.slots_mu + torch.exp(self.slots_log_sigma) * torch.randn(len(inputs), self.num_slots, self.slot_size, device = self.slots_mu.device)
+
+        for _ in range(num_iter or self.num_iter):
+            slots_prev = slots
+            slots = self.norm_slots(slots)
+
+            q = self.project_q(slots)
+            q *= self.slot_size ** -0.5
+            
+            attn_logits = torch.bmm(q, k.transpose(-1, -2))
+
+            attn = F.softmax(attn_logits / self.temperature_factor, dim = 1)
+            attn = attn + self.epsilon
+
+            bincount = attn.sum(dim = -1, keepdim = True)
+            updates = torch.bmm(attn / bincount, v)
+            
+            slots = self.gru(updates.flatten(end_dim = 1), slots_prev.flatten(end_dim = 1)).reshape_as(slots)
+            slots = slots + self.mlp(self.norm_mlp(slots))
+
+        return slots, attn_logits, attn
+
 class ImagePreprocessor(nn.Module):
     def __init__(self, resolution, crop = tuple()):
         super().__init__()
@@ -87,7 +160,7 @@ class SlotAttentionAutoEncoder(nn.Module):
         x = self.encoder_pos(x)
         x = self.mlp(self.layer_norm(x))
         
-        slots = self.slot_attention(x.flatten(start_dim = 1, end_dim = 2))
+        slots = self.slot_attention(x.flatten(start_dim = 1, end_dim = 2))[0]
         x = slots.reshape(-1, 1, 1, slots.shape[-1]).expand(-1, *self.decoder_initial_size, -1)
         x = self.decoder_pos(x)
         x = self.decoder_cnn(x.movedim(-1, 1))
@@ -99,62 +172,3 @@ class SlotAttentionAutoEncoder(nn.Module):
         recon_combined = (recons * masks).sum(dim = 1)
 
         return recon_combined, recons, masks, slots
-
-class SlotAttention(nn.Module):
-    def __init__(self, num_iter, num_slots, input_size, slot_size, mlp_hidden_size, epsilon=1e-8):
-        super().__init__()
-        self.num_iter = num_iter
-        self.num_slots = num_slots
-        self.slot_size = slot_size
-        self.mlp_hidden_size = mlp_hidden_size
-        self.epsilon = epsilon
-        self.input_size = input_size
-
-        self.norm_inputs = nn.LayerNorm(input_size)
-        self.norm_slots  = nn.LayerNorm(slot_size)
-        self.norm_mlp    = nn.LayerNorm(slot_size)
-
-        self.slots_mu        = nn.Parameter(nn.init.xavier_uniform_(torch.empty(1, 1, self.slot_size)))
-        self.slots_log_sigma = nn.Parameter(nn.init.xavier_uniform_(torch.empty(1, 1, self.slot_size)))
-        
-        self.project_q = nn.Linear(slot_size , slot_size, bias = False)
-        self.project_k = nn.Linear(input_size, slot_size, bias = False)
-        self.project_v = nn.Linear(input_size, slot_size, bias = False)
-        
-        nn.init.xavier_uniform_(self.project_q.weight)
-        nn.init.xavier_uniform_(self.project_k.weight)
-        nn.init.xavier_uniform_(self.project_v.weight)
-        
-        self.gru = nn.GRUCell(slot_size, slot_size)
-        self.mlp = nn.Sequential(
-            nn.Linear(self.slot_size, self.mlp_hidden_size),
-            nn.ReLU(inplace = True),
-            nn.Linear(self.mlp_hidden_size, self.slot_size)
-        )
-
-    def forward(self, inputs):
-        inputs = self.norm_inputs(inputs)
-        k = self.project_k(inputs)
-        v = self.project_v(inputs)
-       
-        slots = self.slots_mu + torch.exp(self.slots_log_sigma) * torch.randn(len(inputs), self.num_slots, self.slot_size, device = self.slots_mu.device)
-
-        for _ in range(self.num_iter):
-            slots_prev = slots
-            slots = self.norm_slots(slots)
-
-            q = self.project_q(slots)
-            q *= self.slot_size ** -0.5
-            
-            attn_logits = torch.bmm(q, k.transpose(-1, -2))
-
-            attn = F.softmax(attn_logits, dim = 1)
-            attn = attn + self.epsilon
-
-            bincount = attn.sum(dim = -1, keepdim = True)
-            updates = torch.bmm(attn / bincount, v)
-            
-            slots = self.gru(updates.flatten(end_dim = 1), slots_prev.flatten(end_dim = 1)).reshape_as(slots)
-            slots = slots + self.mlp(self.norm_mlp(slots))
-
-        return slots
