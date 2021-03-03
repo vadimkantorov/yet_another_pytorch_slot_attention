@@ -9,15 +9,14 @@ class ImagePreprocessor(nn.Module):
         self.resolution = resolution
         self.crop = crop
         
-    def forward(self, image):
+    def forward(self, image, bipole = True, interpolate_mode = 'bilinear'):
         assert image.is_floating_point()
-        image = (image - 0.5) * 2
+        image = (image - 0.5) * 2 if bipole else image
 
-        if self.crop:
-            image = image[..., self.crop[0]:self.crop[1], self.crop[2]:self.crop[3]]
+        image = image[..., self.crop[0]:self.crop[1], self.crop[2]:self.crop[3]] if self.crop else image
 
-        image = F.interpolate(image, self.resolution)
-        image = image.clamp(-1, 1)
+        image = F.interpolate(image, self.resolution, mode = interpolate_mode)
+        image = image.clamp(-1 if bipole else 0, 1)
         return image
 
 class SlotAttentionEncoder(nn.Sequential):

@@ -1,5 +1,5 @@
 import argparse
-import matplotlib; matplotlib.use('Agg'); import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 import torch
 
 import models
@@ -21,14 +21,7 @@ def get_prediction(model, batch, idx=0):
 
 @torch.no_grad()
 def main(args):
-    frontend = models.ImagePreprocessor(resolution = args.resolution, crop = args.crop)
-    model = models.SlotAttentionAutoEncoder(resolution = args.resolution, num_slots = args.num_slots, num_iterations = args.num_iterations, hidden_dim = args.hidden_dim).to(args.device)
-        
-    if args.checkpoint or args.checkpoint_tensorflow:
-        model_state_dict = torch.load(args.checkpoint, map_location = 'cpu')['model_state_dict'] if args.checkpoint else train.rename_and_transpose_tfcheckpoint(torch.load(args.checkpoint_tensorflow, map_location = 'cpu')) 
-        model_state_dict = {'.'.join(k.split('.')[1:]) if k.startswith('module.') else k : v for k, v in model_state_dict.items()}
-        status = model.load_state_dict(model_state_dict, strict = False)
-        assert set(status.missing_keys) in [set(), set(['encoder_pos.grid', 'decoder_pos.grid'])]
+    frontend, model = train.build_model(args)
 
     test_set = clevr.CLEVR(args.dataset_root_dir, 'val', filter = lambda scene_objects: len(scene_objects) <= 6)
 
@@ -59,8 +52,6 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--seed', default=0, type=int, help='Random seed.')
-    parser.add_argument('--batch-size', default=64, type=int, help='Batch size for the model.')
     parser.add_argument('--num-slots', default=7, type=int, help='Number of slots in Slot Attention.')
     parser.add_argument('--num-iterations', default=3, type=int, help='Number of attention iterations.')
     parser.add_argument('--hidden-dim', default=64, type=int, help='hidden dimension size')
@@ -68,6 +59,7 @@ if __name__ == '__main__':
     parser.add_argument('--resolution', type = int, nargs = 2, default = (128, 128))
     parser.add_argument('--dataset-root-dir', default = './CLEVR_v1.0')
     parser.add_argument('--device', default = 'cpu', choices = ['cuda', 'cpu'])
+    parser.add_argument('--data-parallel', action = 'store_true')
     parser.add_argument('--checkpoint')
     parser.add_argument('--checkpoint-tensorflow')
     parser.add_argument('--savefig', default = 'savefig.jpg')

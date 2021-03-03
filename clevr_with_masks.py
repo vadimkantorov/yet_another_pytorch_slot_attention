@@ -65,15 +65,21 @@ if __name__ == '__main__':
     
     for i, example in enumerate(map(_decode, tf.compat.v1.io.tf_record_iterator(args.input_tfrecords, COMPRESSION_TYPE))):
         image_file_name = f'CLEVR_{args.split_name}_{i:06d}.png'
-        cv2.imwrite(os.path.join(images_dir, image_file_name), example.pop('image').numpy()[..., ::-1])
-        np.save(os.path.join(masks_dir, image_file_name.replace('.png', '.npy')), example.pop('mask').numpy())
-        example = {k : v.numpy().tolist() for k, v in example.items()}
+        
+        example.pop('image') # cv2.imwrite(os.path.join(images_dir, image_file_name), example.pop('image').numpy()[..., ::-1])
+        
+        example = {k : v.numpy() for k, v in example.items()}
+        example['padding'] = example['color'] == 0
+        num_objects = len(example['padding'])
 
+        np.save(os.path.join(masks_dir, image_file_name.replace('.png', '.npy')), example.pop('mask'))
+
+        example = {k : v.tolist() for k, v in example.items()}
         s = dict(
             image_index = i,
             image_filename = image_file_name,
             split = args.split_name,
-            objects = [{k : v[i] for k, v in example.items()} for i in range(len(example['color']))]
+            objects = [{k : v[i] for k, v in example.items()} for i in range(num_objects)],
         )
 
         scenes.append(s)

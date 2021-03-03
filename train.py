@@ -36,23 +36,30 @@ def rename_and_transpose_tfcheckpoint(ckpt):
     ckpt['slot_attention.gru.bias_ih'], ckpt['slot_attention.gru.bias_hh'] = ckpt.pop('slot_attention.gru.bias').unbind()
     return {k : v.permute(3, 2, 0, 1) if v.ndim == 4 else v.t() if v.ndim == 2 else v for k, v in ckpt.items()}
 
-def main(args):
-    os.makedirs(args.model_dir, exist_ok = True)
-
-    train_set = clevr.CLEVR(args.dataset_root_dir, 'train', filter = lambda scene_objects: len(scene_objects) <= 6)
+def build_model(args):
     frontend = models.ImagePreprocessor(resolution = args.resolution, crop = args.crop)
-    model = models.SlotAttentionAutoEncoder(resolution = args.resolution, num_slots = args.num_slots, num_iterations = args.num_iterations, hidden_dim = args.hidden_dim)
+    model = models.SlotAttentionAutoEncoder(resolution = args.resolution, num_slots = args.num_slots, num_iterations = args.num_iterations, hidden_dim = args.hidden_dim).to(args.device)
+        
+    if args.checkpoint or args.checkpoint_tensorflow:
+        model_state_dict = torch.load(args.checkpoint, map_location = 'cpu')['model_state_dict'] if args.checkpoint else train.rename_and_transpose_tfcheckpoint(torch.load(args.checkpoint_tensorflow, map_location = 'cpu')) 
+        model_state_dict = {'.'.join(k.split('.')[1:]) if k.startswith('module.') else k : v for k, v in model_state_dict.items()}
+        status = model.load_state_dict(model_state_dict, strict = False)
+        assert not status.missing_keys or set(status.missing_keys) == set(['encoder_pos.grid', 'decoder_pos.grid'])
+    
     if args.data_parallel:
         model = nn.DataParallel(model)
     model.to(args.device)
 
+    return frontend, model
+
+def main(args):
+    os.makedirs(args.model_dir, exist_ok = True)
+
+    frontend, model = build_model(args)
     criterion = nn.MSELoss()
     
-    if args.checkpoint or args.checkpoint_tensorflow:
-        model_state_dict = torch.load(args.checkpoint, map_location = 'cpu')['model_state_dict'] if args.checkpoint else train.rename_and_transpose_tfcheckpoint(torch.load(args.checkpoint_tensorflow, map_location = 'cpu')) 
-        status = model.load_state_dict(model_state_dict, strict = False)
-        assert set(status.missing_keys) in [set(), set(['encoder_pos.grid', 'decoder_pos.grid'])]
-
+    train_set = clevr.CLEVR(args.dataset_root_dir, 'train', filter = lambda scene_objects: len(scene_objects) <= 6)
+    
     train_dataloader = torch.utils.data.DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
 
     optimizer = torch.optim.Adam(model.parameters(), lr = args.learning_rate)

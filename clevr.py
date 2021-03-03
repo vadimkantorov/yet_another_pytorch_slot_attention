@@ -1,5 +1,6 @@
 import os
 import json
+import torch
 import torchvision
 import numpy as np
 
