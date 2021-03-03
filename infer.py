@@ -17,17 +17,16 @@ def get_prediction(model, batch, idx=0):
     recon_combined = renormalize(recon_combined)[idx]
     recons = renormalize(recons)[idx]
     masks = masks[idx]
-    return [t.movedim(-3, -1) for t in [image, recon_combined, recons, masks, slots]]
+    return [t.movedim(-3, -1) for t in [image.cpu(), recon_combined, recons, masks, slots]]
 
 @torch.no_grad()
 def main(args):
     frontend, model = train.build_model(args)
 
-    test_set = clevr.CLEVR(args.dataset_root_dir, 'val', filter = lambda scene_objects: len(scene_objects) <= 6)
+    test_set = clevr.CLEVR(args.dataset_root_dir, args.split_name)
 
-    image = test_set[2]['image']
-    image = image.unsqueeze(0).to(args.device)
-    batch = frontend(image)
+    image = test_set[args.index]['image']
+    batch = frontend(image.unsqueeze(0).to(args.device))
     num_slots = args.num_slots
 
     # Predict.
@@ -63,6 +62,8 @@ if __name__ == '__main__':
     parser.add_argument('--checkpoint')
     parser.add_argument('--checkpoint-tensorflow')
     parser.add_argument('--savefig', default = 'savefig.jpg')
+    parser.add_argument('--index', type = int, default = 2)
+    parser.add_argument('--split-name', default = 'val')
     args = parser.parse_args()
 
     main(args)

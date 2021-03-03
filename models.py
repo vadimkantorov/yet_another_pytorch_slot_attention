@@ -4,19 +4,18 @@ import torch.nn.functional as F
 import numpy as np
 
 class ImagePreprocessor(nn.Module):
-    def __init__(self, resolution, crop = tuple(), interpolate_mode = 'bilinear'):
+    def __init__(self, resolution, crop = tuple()):
         super().__init__()
         self.resolution = resolution
         self.crop = crop
-        self.interpolate_mode = interpolate_mode
         
-    def forward(self, image, bipole = True):
+    def forward(self, image, bipole = True, interpolate_mode = 'bilinear'):
         assert image.is_floating_point()
         image = (image - 0.5) * 2 if bipole else image
 
         image = image[..., self.crop[0]:self.crop[1], self.crop[2]:self.crop[3]] if self.crop else image
 
-        image = F.interpolate(image, self.resolution, mode = self.interpolate_mode)
+        image = F.interpolate(image, self.resolution, mode = interpolate_mode)
         image = image.clamp(-1 if bipole else 0, 1)
         return image
 

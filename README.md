@@ -27,8 +27,8 @@ pip install tensorflow
 
 # generate CLEVR6train, CLEVR6val, CLEVR10val
 # python clevr_with_masks.py -i clevr_with_masks_train.tfrecords -o ./CLEVR_with_masks --split-name CLEVR6train --begin-index 0 --end-index 70000 --max-num-objects 6
-python clevr_with_masks.py -i clevr_with_masks_train.tfrecords -o ./CLEVR_with_masks --split-name CLEVR6val --begin-index 70000 --end-index 100000 --max-num-objects 6 --keep-prob 0.1
-python clevr_with_masks.py -i clevr_with_masks_train.tfrecords -o ./CLEVR_with_masks --split-name CLEVR10val --begin-index 70000 --end-index 100000 --max-num-objects 10 --keep-prob 0.1
+python clevr_with_masks.py -i clevr_with_masks_train.tfrecords -o ./CLEVR_with_masks --split-name CLEVR6val --begin-index 70000 --end-index 100000 --max-num-objects 7 --keep-prob 0.1
+python clevr_with_masks.py -i clevr_with_masks_train.tfrecords -o ./CLEVR_with_masks --split-name CLEVR10val --begin-index 70000 --end-index 100000 --max-num-objects 11 --keep-prob 0.1
 
 python eval.py --dataset-root-dir ./CLEVR_with_masks --split-name CLEVR6val --checkpoint-tensorflow slot-attention_object_discovery.pt
 ```

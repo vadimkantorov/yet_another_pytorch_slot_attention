@@ -7,7 +7,6 @@ import numpy as np
 class CLEVR(torchvision.datasets.VisionDataset):
     def __init__(self, root, split_name, transform = torchvision.transforms.ToTensor(), loader = torchvision.datasets.folder.default_loader, filter = None):
         super().__init__(root, transform = transform)
-        assert split_name in ['train', 'val', 'test']
         self.loader = loader
         scenes_json_path = os.path.join(root, 'scenes', f'CLEVR_{split_name}_scenes.json')
         images_split_dir = os.path.join(root, 'images', split_name)

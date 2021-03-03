@@ -11,7 +11,7 @@ def adjusted_rand_index(true_mask, pred_mask):
     true_group_ids = torch.argmax(true_mask, -1)
     pred_group_ids = torch.argmax(pred_mask, -1)
     true_mask_oh = true_mask.to(torch.float32) 
-    pred_mask_oh = F.one_hot(pred_group_ids, n_pred_groups)
+    pred_mask_oh = F.one_hot(pred_group_ids, n_pred_groups).to(torch.float32)
 
     n_points = torch.sum(true_mask_oh, dim=[1, 2]).to(torch.float32)
 
@@ -26,6 +26,6 @@ def adjusted_rand_index(true_mask, pred_mask):
     max_rindex = (aindex + bindex) / 2
     ari = (rindex - expected_rindex) / (max_rindex - expected_rindex)
 
-    _all_equal = lambda values: torch.all(torch.equal(values, values[..., :1]), dim=-1)
+    _all_equal = lambda values: torch.all(torch.eq(values, values[..., :1]), dim=-1)
     both_single_cluster = torch.logical_and(_all_equal(true_group_ids), _all_equal(pred_group_ids))
     return torch.where(both_single_cluster, torch.ones_like(ari), ari)

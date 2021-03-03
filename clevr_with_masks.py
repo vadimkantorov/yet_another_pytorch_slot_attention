@@ -64,8 +64,11 @@ if __name__ == '__main__':
     parser.add_argument('--begin-index', type = int)
     parser.add_argument('--end-index', type = int)
     parser.add_argument('--keep-prob', type = float, default = 1.0)
+    parser.add_argument('--seed', type = int, default = 1)
     args = parser.parse_args()
-    
+   
+    random.seed(args.seed)
+
     images_dir = os.path.join(args.output_dir, 'images', args.split_name)
     masks_dir = os.path.join(args.output_dir, 'masks', args.split_name)
     scenes_json = os.path.join(args.output_dir, 'scenes', f'CLEVR_{args.split_name}_scenes.json')
@@ -76,6 +79,7 @@ if __name__ == '__main__':
     scenes = []
     
     for i, example in enumerate(map(_decode, tf.compat.v1.io.tf_record_iterator(args.input_tfrecords, COMPRESSION_TYPE))):
+        print(i)
         if (args.begin_index is not None and i < args.begin_index) or (args.end_index is not None and i >= args.end_index):
             continue
 
@@ -105,7 +109,7 @@ if __name__ == '__main__':
         )
 
         scenes.append(s)
-        print(i)
+        print(i, 'keep')
 
     json.dump(dict(info = dict(split = args.split_name), scenes = scenes) , open(scenes_json, 'w'), indent = 2)
     
