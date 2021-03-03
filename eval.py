@@ -20,7 +20,7 @@ def main(args):
     for i, batch in enumerate(test_dataloader):
         images, mask_true = map(batch.get, ['image', 'mask'])
        
-        images = frontend(images.to(args.device))
+        images = frontend(images.to(args.device), interpolate_mode = 'nearest')
         mask_true = frontend(mask_true[:, 1:].to(device = args.device, dtype = torch.float32), bipole = False, interpolate_mode = 'nearest')
         recon_combined, recons, mask_pred, slots = model(images)
         
