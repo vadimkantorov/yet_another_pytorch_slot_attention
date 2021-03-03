@@ -53,8 +53,9 @@ class SoftPositionEmbed(nn.Module):
 
 
 class SlotAttentionAutoEncoder(nn.Module):
-    def __init__(self, resolution = (128, 128), num_slots = 8, num_iterations = 3, decoder_initial_size = (8, 8), hidden_dim = 64):
+    def __init__(self, resolution = (128, 128), num_slots = 8, num_iterations = 3, decoder_initial_size = (8, 8), hidden_dim = 64, interpolate_mode = 'bilinear'):
         super().__init__()
+        self.interpolate_mode = interpolate_mode
         self.resolution = resolution
         self.num_slots = num_slots
         self.num_iterations = num_iterations
@@ -91,7 +92,7 @@ class SlotAttentionAutoEncoder(nn.Module):
         x = self.decoder_pos(x)
         x = self.decoder_cnn(x.movedim(-1, 1))
 
-        x = F.interpolate(x, image.shape[-2:])
+        x = F.interpolate(x, image.shape[-2:], mode = self.interpolate_mode)
 
         recons, masks = x.unflatten(0, (image.shape[0], len(x) // image.shape[0])).split((image.shape[-3], 1), dim = 2)
         masks = masks.softmax(dim = 1)
