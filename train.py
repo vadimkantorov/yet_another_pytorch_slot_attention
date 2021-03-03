@@ -58,7 +58,7 @@ def main(args):
     frontend, model = build_model(args)
     criterion = nn.MSELoss()
     
-    train_set = clevr.CLEVR(args.dataset_root_dir, 'train', filter = lambda scene_objects: len(scene_objects) <= 6)
+    train_set = clevr.CLEVR(args.dataset_root_dir, args.split_name, filter = lambda scene_objects: len(scene_objects) <= 6)
     
     train_dataloader = torch.utils.data.DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
 
@@ -124,6 +124,7 @@ if __name__ == '__main__':
     parser.add_argument('--checkpoint-epoch-interval', type = int, default = 10)
     parser.add_argument('--checkpoint-pattern', default = 'ckpt_{epoch:04d}.pt')
     parser.add_argument('--checkpoint-tensorflow')
+    parser.add_argument('--split-name', default = 'train')
     args = parser.parse_args()
 
     main(args)

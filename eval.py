@@ -12,19 +12,20 @@ import metrics
 def main(args):
     frontend, model = train.build_model(args)
 
-    test_set = clevr.CLEVR(args.dataset_root_dir, 'train', filter = lambda scene_objects: len(scene_objects) - sum(o['padding'] for o in scene_objects) <= 6)
+    test_set = clevr.CLEVR(args.dataset_root_dir, args.split_name)
     
     test_dataloader = torch.utils.data.DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
 
     ari = []
     for i, batch in enumerate(test_dataloader):
-        images, masks = map(batch.get, ['image', 'mask'])
-        images = frontend(images.to(args.device))
-        masks = frontend(masks.squeeze(-1).to(args.device).div(255.0), bipole = False)
+        images, mask_true = map(batch.get, ['image', 'mask'])
         
-        mask_true = masks.flatten(start_dim = 2).transpose(-1, -2)
-        recon_combined, recons, masks, slots = model(images)
-        mask_pred = masks.flatten(start_dim = 2).transpose(-1, -2)
+        images = frontend(images.to(args.device))
+        mask_true = frontend(mask_true.to(device = args.device, dtype = torch.float32), bipole = False)
+        recon_combined, recons, mask_pred, slots = model(images)
+        
+        mask_true = mask_true.flatten(start_dim = 2).transpose(-1, -2)
+        mask_pred = mask_pred.flatten(start_dim = 2).transpose(-1, -2)
 
         ari.extend(metrics.adjusted_rand_index(mask_true, mask_pred).tolist())
 
@@ -45,6 +46,7 @@ if __name__ == '__main__':
     parser.add_argument('--data-parallel', action = 'store_true')
     parser.add_argument('--checkpoint')
     parser.add_argument('--checkpoint-tensorflow')
+    parser.add_argument('--split-name')
     args = parser.parse_args()
 
     main(args)

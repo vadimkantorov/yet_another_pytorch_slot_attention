@@ -41,9 +41,17 @@ def _decode(example_proto):
   return single_example
 
 
+byte2word = dict(
+    material = [None, 'rubber', 'metal'], 
+    size     = [None, 'large', 'small'], 
+    color    = [None, 'red', 'cyan', 'green', 'blue', 'brown', 'gray', 'purple', 'yellow'], 
+    shape    = [None, 'sphere', 'cylinder', 'cube']
+)
+
 if __name__ == '__main__':
     import os
     import json
+    import random
     import argparse
     import numpy as np
     import cv2
@@ -51,7 +59,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--input-tfrecords', '-i', required = True)
     parser.add_argument('--output-dir', '-o', required = True)
-    parser.add_argument('--split-name', default = 'train')  
+    parser.add_argument('--split-name', default = 'train')
+    parser.add_argument('--max-num-objects', type = int)
+    parser.add_argument('--begin-index', type = int)
+    parser.add_argument('--end-index', type = int)
+    parser.add_argument('--keep-prob', type = float, default = 1.0)
     args = parser.parse_args()
     
     images_dir = os.path.join(args.output_dir, 'images', args.split_name)
@@ -64,22 +76,32 @@ if __name__ == '__main__':
     scenes = []
     
     for i, example in enumerate(map(_decode, tf.compat.v1.io.tf_record_iterator(args.input_tfrecords, COMPRESSION_TYPE))):
+        if (args.begin_index is not None and i < args.begin_index) or (args.end_index is not None and i >= args.end_index):
+            continue
+
         image_file_name = f'CLEVR_{args.split_name}_{i:06d}.png'
         
-        example.pop('image') # cv2.imwrite(os.path.join(images_dir, image_file_name), example.pop('image').numpy()[..., ::-1])
-        
         example = {k : v.numpy() for k, v in example.items()}
-        example['padding'] = example['color'] == 0
-        num_objects = len(example['padding'])
+        example['padding'] = example['visibility'] == 0.0
 
-        np.save(os.path.join(masks_dir, image_file_name.replace('.png', '.npy')), example.pop('mask'))
+        num_objects = (example['visibility'] == 1.0).sum()
+        num_objects_with_padding = len(example['padding'])
+
+        if args.max_num_objects is not None and num_objects > args.max_num_objects:
+            continue
+
+        if not (args.keep_prob == 1 or random.random() <= args.keep_prob):
+            continue
+
+        cv2.imwrite(os.path.join(images_dir, image_file_name), example.pop('image')[..., ::-1])
+        np.save(os.path.join(masks_dir, image_file_name.replace('.png', '.npy')), (example.pop('mask') / 255).squeeze(-1))
 
         example = {k : v.tolist() for k, v in example.items()}
         s = dict(
             image_index = i,
             image_filename = image_file_name,
             split = args.split_name,
-            objects = [{k : v[i] for k, v in example.items()} for i in range(num_objects)],
+            objects = [{k : v[i] if k not in byte2word else byte2word[k][v[i]] for k, v in example.items()} for i in range(num_objects_with_padding)],
         )
 
         scenes.append(s)
@@ -88,3 +110,4 @@ if __name__ == '__main__':
     json.dump(dict(info = dict(split = args.split_name), scenes = scenes) , open(scenes_json, 'w'), indent = 2)
     
     print(args.output_dir)
+    print('Number of files:', len(scenes))
