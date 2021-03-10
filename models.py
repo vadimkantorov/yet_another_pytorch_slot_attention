@@ -160,15 +160,15 @@ class SlotAttentionAutoEncoder(nn.Module):
         x = self.encoder_pos(x)
         x = self.mlp(self.layer_norm(x))
         
-        slots = self.slot_attention(x.flatten(start_dim = 1, end_dim = 2))[0]
+        slots, attn_logits, attn = self.slot_attention(x.flatten(start_dim = 1, end_dim = 2))
         x = slots.reshape(-1, 1, 1, slots.shape[-1]).expand(-1, *self.decoder_initial_size, -1)
         x = self.decoder_pos(x)
         x = self.decoder_cnn(x.movedim(-1, 1))
 
         x = F.interpolate(x, image.shape[-2:], mode = self.interpolate_mode)
 
-        recons, masks = x.unflatten(0, (image.shape[0], len(x) // image.shape[0])).split((image.shape[-3], 1), dim = 2)
+        recons, masks = x.unflatten(0, (len(image), len(x) // len(image))).split((3, 1), dim = 2)
         masks = masks.softmax(dim = 1)
         recon_combined = (recons * masks).sum(dim = 1)
 
-        return recon_combined, recons, masks, slots
+        return recon_combined, recons, masks, slots, attn.unflatten(-1, x.shape[-2:])

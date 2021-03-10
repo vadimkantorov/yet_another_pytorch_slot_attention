@@ -11,7 +11,7 @@ def renormalize(x):
     return x / 2. + 0.5
 
 def get_prediction(model, batch, idx=0):
-    recon_combined, recons, masks, slots = map(lambda t: t.cpu(), model(batch))
+    recon_combined, recons, masks, slots, attn = map(lambda t: t.cpu(), model(batch))
 
     image = renormalize(batch)[idx]
     recon_combined = renormalize(recon_combined)[idx]

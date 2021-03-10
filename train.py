@@ -48,7 +48,7 @@ def build_model(args):
     
     if args.data_parallel:
         model = nn.DataParallel(model)
-    model.to(args.device)
+    model = model.to(args.device).eval()
 
     return frontend, model
 
@@ -56,6 +56,7 @@ def main(args):
     os.makedirs(args.model_dir, exist_ok = True)
 
     frontend, model = build_model(args)
+
     criterion = nn.MSELoss()
     
     train_set = clevr.CLEVR(args.dataset_root_dir, args.split_name, filter = lambda scene_objects: len(scene_objects) <= 6)
@@ -78,7 +79,7 @@ def main(args):
             optimizer.param_groups[0]['lr'] = learning_rate
             
             images = frontend(images.to(args.device))
-            recon_combined, recons, masks, slots = model(images)
+            recon_combined, recons, masks, slots, attn = model(images)
             loss = criterion(recon_combined, images)
             loss_item = float(loss)
             total_loss += loss_item

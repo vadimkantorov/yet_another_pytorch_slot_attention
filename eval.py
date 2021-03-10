@@ -2,10 +2,9 @@ import argparse
 import matplotlib.pyplot as plt
 import torch
 
-import models
 import clevr
+import models
 import train
-import infer
 import metrics
 
 @torch.no_grad()
@@ -14,7 +13,7 @@ def main(args):
 
     test_set = clevr.CLEVR(args.dataset_root_dir, args.split_name)
     
-    test_dataloader = torch.utils.data.DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
+    test_dataloader = torch.utils.data.DataLoader(test_set, batch_size = args.batch_size, shuffle = False, num_workers = args.num_workers)
 
     ari = []
     for i, batch in enumerate(test_dataloader):
@@ -22,7 +21,7 @@ def main(args):
        
         images = frontend(images.to(args.device), interpolate_mode = 'nearest')
         mask_true = frontend(mask_true[:, 1:].to(device = args.device, dtype = torch.float32), bipole = False, interpolate_mode = 'nearest')
-        recon_combined, recons, mask_pred, slots = model(images)
+        recon_combined, recons, mask_pred, slots, attn = model(images)
         
         mask_true = mask_true.flatten(start_dim = 2).transpose(-1, -2)
         mask_pred = mask_pred.flatten(start_dim = 2).transpose(-1, -2)
