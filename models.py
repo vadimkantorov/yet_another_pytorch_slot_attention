@@ -171,4 +171,4 @@ class SlotAttentionAutoEncoder(nn.Module):
         masks = masks.softmax(dim = 1)
         recon_combined = (recons * masks).sum(dim = 1)
 
-        return recon_combined, recons, masks, slots, attn.unflatten(-1, x.shape[-2:])
+        return recon_combined, recons, masks, slots, attn.unsqueeze(-2).unflatten(-1, x.shape[-2:])

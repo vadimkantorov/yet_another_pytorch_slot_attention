@@ -12,12 +12,7 @@ def renormalize(x):
 
 def get_prediction(model, batch, idx=0):
     recon_combined, recons, masks, slots, attn = map(lambda t: t.cpu(), model(batch))
-
-    image = renormalize(batch)[idx]
-    recon_combined = renormalize(recon_combined)[idx]
-    recons = renormalize(recons)[idx]
-    masks = masks[idx]
-    return [t.movedim(-3, -1) for t in [image.cpu(), recon_combined, recons, masks, slots]]
+    return [t.movedim(-3, -1) for t in [renormalize(batch)[idx].cpu(), renormalize(recon_combined)[idx], renormalize(recons)[idx], masks[idx], attn[idx]]]
 
 @torch.no_grad()
 def main(args):
@@ -30,21 +25,23 @@ def main(args):
     num_slots = args.num_slots
 
     # Predict.
-    image, recon_combined, recons, masks, slots = get_prediction(model, batch)
+    image, recon_combined, recons, masks, attn = get_prediction(model, batch)
 
     # Visualize.
-    fig, ax = plt.subplots(1, num_slots + 2, figsize=(15, 2))
-    ax[0].imshow(image)
-    ax[0].set_title('Image')
-    ax[1].imshow(recon_combined)
-    ax[1].set_title('Recon.')
-    for i in range(num_slots):
-      picture = recons[i] * masks[i] + (1 - masks[i])
-      ax[i + 2].imshow(picture)
-      ax[i + 2].set_title('Slot %s' % str(i + 1))
-    for i in range(len(ax)):
-      ax[i].grid(False)
-      ax[i].axis('off')
+    fig, ax = plt.subplots(2, num_slots + 2, figsize=(15, 2))
+    ax[0, 0].imshow(image)
+    ax[0, 0].set_title('Image')
+    ax[0, 1].imshow(recon_combined)
+    ax[0, 1].set_title('Recon.')
+
+    for k, (name, masks) in enumerate(dict(masks = masks, attn = attn).items()):
+        for i in range(num_slots):
+            picture = recons[i] * masks[i] + (1 - masks[i])
+            ax[k, i + 2].imshow(picture)
+            ax[k, i + 2].set_title(f'Slot [{name}] {i + 1}')
+        for i in range(num_slots + 2):
+            ax[k, i].grid(False)
+            ax[k, i].axis('off')
 
     plt.savefig(args.savefig)
     print(args.savefig)
