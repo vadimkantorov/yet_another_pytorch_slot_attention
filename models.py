@@ -66,10 +66,10 @@ class SlotAttention(nn.Module):
             attn_logits = torch.bmm(q, k.transpose(-1, -2))
 
             attn = F.softmax(attn_logits / self.temperature_factor, dim = 1)
-            attn = attn + self.epsilon
+            attn_ = attn + self.epsilon
 
-            bincount = attn.sum(dim = -1, keepdim = True)
-            updates = torch.bmm(attn / bincount, v)
+            bincount = attn_.sum(dim = -1, keepdim = True)
+            updates = torch.bmm(attn_ / bincount, v)
             
             slots = self.gru(updates.flatten(end_dim = 1), slots_prev.flatten(end_dim = 1)).reshape_as(slots)
             slots = slots + self.mlp(self.norm_mlp(slots))

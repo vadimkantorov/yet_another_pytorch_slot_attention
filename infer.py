@@ -28,20 +28,24 @@ def main(args):
     image, recon_combined, recons, masks, attn = get_prediction(model, batch)
 
     # Visualize.
-    fig, ax = plt.subplots(2, num_slots + 2, figsize=(15, 2))
+    fig, ax = plt.subplots(2, 3 + num_slots, figsize=(15, 2))
     ax[0, 0].imshow(image)
     ax[0, 0].set_title('Image')
     ax[0, 1].imshow(recon_combined)
     ax[0, 1].set_title('Recon.')
-
+    
     for k, (name, masks) in enumerate(dict(masks = masks, attn = attn).items()):
+        picture = recons * masks + (1 - masks)
+        entropy = -(masks * masks.clamp(min = 1e-12).log()).sum(dim = 0).squeeze(-1)
+        ax[k, 2].imshow(entropy, cmap = 'jet')
+        ax[k, 2].set_title(f'Entropy [{name}]')
         for i in range(num_slots):
-            picture = recons[i] * masks[i] + (1 - masks[i])
-            ax[k, i + 2].imshow(picture)
-            ax[k, i + 2].set_title(f'Slot [{name}] {i + 1}')
-        for i in range(num_slots + 2):
-            ax[k, i].grid(False)
-            ax[k, i].axis('off')
+            ax[k, i + 3].imshow(picture[i])
+            ax[k, i + 3].set_title(f'Slot [{name}] {i + 1}')
+
+        for a in ax[k]:
+            a.grid(False)
+            a.axis('off')
 
     plt.savefig(args.savefig)
     print(args.savefig)
