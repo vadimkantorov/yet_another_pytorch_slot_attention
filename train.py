@@ -8,6 +8,7 @@ import torch.nn as nn
 
 import models
 import clevr
+import coco
 
 def rename_and_transpose_tfcheckpoint(ckpt):
     # converted with https://github.com/vadimkantorov/tfcheckpoint2pytorch
@@ -37,7 +38,6 @@ def rename_and_transpose_tfcheckpoint(ckpt):
     return {k : v.permute(3, 2, 0, 1) if v.ndim == 4 else v.t() if v.ndim == 2 else v for k, v in ckpt.items()}
 
 def build_model(args):
-    frontend = models.ImagePreprocessor(resolution = args.resolution, crop = args.crop)
     model = models.SlotAttentionAutoEncoder(resolution = args.resolution, num_slots = args.num_slots, num_iterations = args.num_iterations, hidden_dim = args.hidden_dim).to(args.device)
         
     if args.checkpoint or args.checkpoint_tensorflow:
@@ -50,18 +50,37 @@ def build_model(args):
         model = nn.DataParallel(model)
     model = model.to(args.device).eval()
 
-    return frontend, model
+    return model
+
+def build_dataset(args, filter = None):
+    assert os.path.exists(args.dataset_root_dir), f'provided dataset path [{args.dataset_root_dir}] does not exist'
+    
+    if args.dataset == 'CLEVR':
+        dataset = clevr.CLEVR(args.dataset_root_dir, args.split_name, filter = filter)
+        batch_frontend = models.ClevrImagePreprocessor(resolution = args.resolution, crop = args.crop)
+        collate_fn = torch.utils.data.dataloader.default_collate
+
+    elif args.dataset == 'COCO':
+        PATHS = dict(
+            train = (os.path.join(args.dataset_root_dir, f'train{args.coco_year}'), os.path.join(args.dataset_root_dir, 'annotations', f'{args.coco_mode}_train{args.coco_year}.json')),
+            val = (os.path.join(args.dataset_root_dir, f'val{args.coco_year}'), os.path.join(args.dataset_root_dir, 'annotations', f'{args.coco_mode}_val{args.coco_year}.json')),
+        )
+        dataset = coco.CocoDetection(*PATHS[args.split_name], transforms = models.CocoImagePreprocessorSimple(args.split_name), return_masks = args.coco_masks)
+        batch_frontend = nn.Identity()
+        collate_fn = lambda batch: (torch.utils.data.dataloader.default_collate([t[0] for t in batch]), [t[1] for t in batch])
+
+    return dataset, collate_fn, batch_frontend
 
 def main(args):
     os.makedirs(args.model_dir, exist_ok = True)
-
-    frontend, model = build_model(args)
+ 
+    dataset, collate_fn, batch_frontend = build_dataset(args, filter = lambda scene_objects: len(scene_objects) <= 6)
+    
+    model = build_model(args)
 
     criterion = nn.MSELoss()
-    
-    train_set = clevr.CLEVR(args.dataset_root_dir, args.split_name, filter = lambda scene_objects: len(scene_objects) <= 6)
-    
-    train_dataloader = torch.utils.data.DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
+
+    data_loader = torch.utils.data.DataLoader(dataset, batch_size = args.batch_size, num_workers = args.num_workers, collate_fn = collate_fn, shuffle = True)
 
     optimizer = torch.optim.Adam(model.parameters(), lr = args.learning_rate)
 
@@ -72,13 +91,12 @@ def main(args):
 
         total_loss = 0
 
-        for i, batch in enumerate(train_dataloader):
-            images = batch['image']
+        for i, (images, extra) in enumerate(data_loader):
             learning_rate = (args.learning_rate * (iteration / args.warmup_steps) if iteration < args.warmup_steps else args.learning_rate) * (args.decay_rate ** (iteration / args.decay_steps))
 
             optimizer.param_groups[0]['lr'] = learning_rate
             
-            images = frontend(images.to(args.device))
+            images = batch_frontend(images.to(args.device))
             recon_combined, recons, masks, slots, attn = model(images)
             loss = criterion(recon_combined, images)
             loss_item = float(loss)
@@ -89,10 +107,10 @@ def main(args):
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            print('Epoch:', epoch, '#', iteration, '|', i, '/', len(train_dataloader), 'Loss:', loss_item)
+            print('Epoch:', epoch, '#', iteration, '|', i, '/', len(data_loader), 'Loss:', loss_item)
             iteration += 1
 
-        total_loss /= len(train_dataloader)
+        total_loss /= len(data_loader)
 
         print ('Epoch:', epoch, 'Loss:', total_loss, 'Time:', datetime.timedelta(seconds = time.time() - start))
 
@@ -120,12 +138,16 @@ if __name__ == '__main__':
     parser.add_argument('--device', default = 'cuda', choices = ['cuda', 'cpu'])
     parser.add_argument('--resolution', type = int, nargs = 2, default = (128, 128))
     parser.add_argument('--crop', type = int, nargs = 4, default = (29, 221, 64, 256))
-    parser.add_argument('--dataset-root-dir', default = './CLEVR_v1.0')
     parser.add_argument('--checkpoint')
     parser.add_argument('--checkpoint-epoch-interval', type = int, default = 10)
     parser.add_argument('--checkpoint-pattern', default = 'ckpt_{epoch:04d}.pt')
     parser.add_argument('--checkpoint-tensorflow')
-    parser.add_argument('--split-name', default = 'train')
+    parser.add_argument('--dataset', default = 'CLEVR', choices = ['CLEVR', 'COCO'])
+    parser.add_argument('--dataset-root-dir', default = './CLEVR_v1.0')
+    parser.add_argument('--split-name', default = 'train', choices = ['train', 'val'])
+    parser.add_argument('--coco-year', type = int, default = 2017)
+    parser.add_argument('--coco-masks', action = 'store_true')
+    parser.add_argument('--coco-mode', default = 'instances')
     args = parser.parse_args()
 
     main(args)

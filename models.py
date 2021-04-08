@@ -3,6 +3,74 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
+import transforms as T
+import torchvision
+
+class ClevrImagePreprocessor(nn.Module):
+    def __init__(self, resolution, crop = tuple(), rgb_mean = 0.5, rgb_std = 0.5):
+        super().__init__()
+        self.rgb_mean = rgb_mean
+        self.rgb_std = rgb_std
+        self.resolution = resolution
+        self.crop = crop
+        
+    def forward(self, img, normalize = True, interpolate_mode = 'bilinear'):
+        assert img.is_floating_point()
+        img = (img - self.rgb_mean) / self.rgb_std if normalize else img
+
+        img = img[..., self.crop[0]:self.crop[1], self.crop[2]:self.crop[3]] if self.crop else img
+
+        img = F.interpolate(img, self.resolution, mode = interpolate_mode)
+        img = img.clamp(-1 if normalize else 0, 1)
+
+        return img
+
+class CocoImagePreprocessorSimple(nn.Module):
+    def __init__(self, split_name, rgb_mean = [0.485, 0.456, 0.406], rgb_std = [0.229, 0.224, 0.225], resolution = (128, 128)):
+        super().__init__()
+        self.rgb_mean = rgb_mean
+        self.rgb_std = rgb_std
+        self.resolution = resolution
+    
+    def forward(self, img, targets, normalize = True, interpolate_mode = 'bilinear'):
+        img = torchvision.transforms.functional.to_tensor(img)
+        img = torchvision.transforms.functional.normalize(img, self.rgb_mean, self.rgb_std) if normalize else img
+        
+        img = F.interpolate(img, self.resolution, mode = interpolate_mode) if img.ndim == 4 else F.interpolate(img.unsqueeze(0), self.resolution, mode = interpolate_mode).squeeze(0)
+        img = img.clamp(-1 if normalize else 0, 1)
+
+        return img, targets
+
+class CocoImagePreprocessor(nn.Sequential):
+    def __init__(self, split_name, rgb_mean = [0.485, 0.456, 0.406], rgb_std = [0.229, 0.224, 0.225], scales_train_selectA = [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800], scales_train_selectB = [400, 500, 600], resolution_val = [800], max_size = 1333, crop_train = (384, 600)):
+        
+        if split_name == 'train':
+            super().__init__(
+                T.RandomHorizontalFlip(),
+                T.RandomSelect(
+                    T.RandomResize(scales_train_selectA, max_size = max_size),
+                    T.Compose([
+                        T.RandomResize(scales_train_selectB),
+                        T.RandomSizeCrop(*crop_train),
+                        T.RandomResize(scales, max_size = max_size),
+                    ])
+                ),
+                T.ToTensor(),
+                T.Normalize(rgb_mean, rgb_std)
+            )
+
+        elif split_name == 'val':
+            super().__init__(
+                T.RandomResize(resolution_val , max_size = max_size),
+                T.ToTensor(),
+                T.Normalize(rgb_mean, rgb_std)
+            )
+    
+    def forward(self, *inputs):
+        for module in self:
+            inputs = module(*inputs)
+        return inputs
+
 class SlotAttention(nn.Module):
     def __init__(self, num_iter, num_slots, input_size, slot_size, mlp_hidden_size, epsilon=1e-8, simple = False, project_inputs = False, gain = 1, temperature_factor = 1):
         super().__init__()
@@ -75,22 +143,6 @@ class SlotAttention(nn.Module):
             slots = slots + self.mlp(self.norm_mlp(slots))
 
         return slots, attn_logits, attn
-
-class ImagePreprocessor(nn.Module):
-    def __init__(self, resolution, crop = tuple()):
-        super().__init__()
-        self.resolution = resolution
-        self.crop = crop
-        
-    def forward(self, image, bipole = True, interpolate_mode = 'bilinear'):
-        assert image.is_floating_point()
-        image = (image - 0.5) * 2 if bipole else image
-
-        image = image[..., self.crop[0]:self.crop[1], self.crop[2]:self.crop[3]] if self.crop else image
-
-        image = F.interpolate(image, self.resolution, mode = interpolate_mode)
-        image = image.clamp(-1 if bipole else 0, 1)
-        return image
 
 class SlotAttentionEncoder(nn.Sequential):
     def __init__(self, hidden_dim = 64, kernel_size = 5, padding = 2):

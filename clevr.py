@@ -34,4 +34,4 @@ class CLEVR(torchvision.datasets.VisionDataset):
         else:
             mask = None
         
-        return dict(image = image, mask = mask, image_name = os.path.basename(image_path))
+        return image, dict(mask = mask, image_name = os.path.basename(image_path))
