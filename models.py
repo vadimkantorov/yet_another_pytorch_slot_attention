@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
 
 import transforms as T
 import torchvision
@@ -96,22 +95,20 @@ class SlotAttention(nn.Module):
         nn.init.xavier_uniform_(self.project_q.weight, gain = gain)
         nn.init.xavier_uniform_(self.project_k.weight, gain = gain)
         nn.init.xavier_uniform_(self.project_v.weight, gain = gain)
+        
+        self.gru = nn.GRUCell(slot_size, slot_size)
+        self.mlp = nn.Sequential(
+            nn.Linear(self.slot_size, self.mlp_hidden_size),
+            nn.ReLU(inplace = True),
+            nn.Linear(self.mlp_hidden_size, self.slot_size)
+        )
 
         self.simple = simple
-        
-        if not self.simple:
-            self.gru = nn.GRUCell(slot_size, slot_size)
-            self.mlp = nn.Sequential(
-                nn.Linear(self.slot_size, self.mlp_hidden_size),
-                nn.ReLU(inplace = True),
-                nn.Linear(self.mlp_hidden_size, self.slot_size)
-            )
-        else:
+        if self.simple:
             assert slot_size == input_size
-            self.gru = lambda x, h, alpha = 0.5: h * alpha + x * (1 - alpha)
             self.norm_mlp = nn.Identity()
-            self.mlp = torch.zeros_like
-        
+            del self.gru; self.gru = lambda x, h, alpha = 0.5: h * alpha + x * (1 - alpha)
+            del self.mlp; self.mlp = torch.zeros_like
         self.project_x = nn.Linear(input_size, input_size) if project_inputs else nn.Identity()
 
     def forward(self, inputs : 'BTC', num_iter = 0, slots : 'BSC' = None) -> '(BSC, BST, BST)':
@@ -133,16 +130,15 @@ class SlotAttention(nn.Module):
             
             attn_logits = torch.bmm(q, k.transpose(-1, -2))
 
-            attn = F.softmax(attn_logits / self.temperature_factor, dim = 1)
-            attn_ = attn + self.epsilon
+            attn_pixelwise = F.softmax(attn_logits / self.temperature_factor, dim = 1)
+            attn_slotwise = F.normalize(attn_pixelwise + self.epsilon, p = 1, dim = -1)
 
-            bincount = attn_.sum(dim = -1, keepdim = True)
-            updates = torch.bmm(attn_ / bincount, v)
+            updates = torch.bmm(attn_slotwise, v)
             
             slots = self.gru(updates.flatten(end_dim = 1), slots_prev.flatten(end_dim = 1)).reshape_as(slots)
             slots = slots + self.mlp(self.norm_mlp(slots))
 
-        return slots, attn_logits, attn
+        return slots, attn_logits, attn_slotwise
 
 class SlotAttentionEncoder(nn.Sequential):
     def __init__(self, hidden_dim = 64, kernel_size = 5, padding = 2):
@@ -164,17 +160,17 @@ class SlotAttentionDecoder(nn.Sequential):
             nn.ConvTranspose2d(hidden_dim, output_dim, kernel_size = output_kernel_size) # 1
         )
 
+
 class SoftPositionEmbed(nn.Module):
-    def __init__(self, hidden_dim, resolution):
+    def __init__(self, hidden_dim):
         super().__init__()
         self.dense = nn.Linear(4, hidden_dim)
-        grid = torch.as_tensor(np.stack(np.meshgrid(*[np.linspace(0., 1., num = res) for res in resolution], indexing = 'ij'), axis = -1)).to(torch.float32)
-        grid = grid.reshape(1, resolution[0], resolution[1], -1)
-        grid = torch.cat([grid, 1 - grid], dim = -1)
-        self.register_buffer('grid', grid)
 
-    def forward(self, inputs):
-        return inputs + self.dense(self.grid)
+    def forward(self, x):
+        spatial_shape = x.shape[-3:-1]
+        grid = torch.stack(torch.meshgrid(*[torch.linspace(0., 1., r, device = x.device) for r in spatial_shape]), dim = -1)
+        grid = torch.cat([grid, 1 - grid], dim = -1)
+        return x + self.dense(grid)
 
 
 class SlotAttentionAutoEncoder(nn.Module):
@@ -187,8 +183,8 @@ class SlotAttentionAutoEncoder(nn.Module):
         self.decoder_initial_size = decoder_initial_size
         self.hidden_dim = hidden_dim
         
-        self.encoder_cnn = SlotAttentionEncoder()
-        self.encoder_pos = SoftPositionEmbed(self.hidden_dim, self.resolution)
+        self.encoder_cnn = SlotAttentionEncoder(hidden_dim = self.hidden_dim)
+        self.encoder_pos = SoftPositionEmbed(self.hidden_dim)
         
         self.layer_norm = nn.LayerNorm(self.hidden_dim)
         self.mlp = nn.Sequential(
@@ -201,26 +197,28 @@ class SlotAttentionAutoEncoder(nn.Module):
             num_iter = self.num_iterations,
             num_slots = self.num_slots,
             input_size = self.hidden_dim,
-            slot_size = 64,
+            slot_size = self.hidden_dim,
             mlp_hidden_size = 128)
         
-        self.decoder_pos = SoftPositionEmbed(self.hidden_dim, self.decoder_initial_size)
-        self.decoder_cnn = SlotAttentionDecoder()
+        self.decoder_pos = SoftPositionEmbed(self.hidden_dim)
+        self.decoder_cnn = SlotAttentionDecoder(hidden_dim = self.hidden_dim, output_dim = 4)
 
-    def forward(self, image):
+    def forward(self, image, slots = None):
         x = self.encoder_cnn(image).movedim(1, -1)
         x = self.encoder_pos(x)
         x = self.mlp(self.layer_norm(x))
         
-        slots, attn_logits, attn = self.slot_attention(x.flatten(start_dim = 1, end_dim = 2))
+        slots, attn_logits, attn_slotwise = self.slot_attention(x.flatten(start_dim = 1, end_dim = 2), slots = slots)
         x = slots.reshape(-1, 1, 1, slots.shape[-1]).expand(-1, *self.decoder_initial_size, -1)
         x = self.decoder_pos(x)
         x = self.decoder_cnn(x.movedim(-1, 1))
-
+        
         x = F.interpolate(x, image.shape[-2:], mode = self.interpolate_mode)
 
-        recons, masks = x.unflatten(0, (len(image), len(x) // len(image))).split((3, 1), dim = 2)
+        x = x.unflatten(0, (len(image), len(x) // len(image)))
+
+        recons, masks = x.split((3, 1), dim = 2)
         masks = masks.softmax(dim = 1)
         recon_combined = (recons * masks).sum(dim = 1)
 
-        return recon_combined, recons, masks, slots, attn.unsqueeze(-2).unflatten(-1, x.shape[-2:])
+        return recon_combined, recons, masks, slots, attn_slotwise.unsqueeze(-2).unflatten(-1, x.shape[-2:])

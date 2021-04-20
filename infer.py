@@ -5,11 +5,18 @@ import torch
 
 import train
 
+import eqv
 
 @torch.no_grad()
 def main(args):
     dataset, collate_fn, batch_frontend = train.build_dataset(args)
     model = train.build_model(args)
+    
+    criterion = eqv.SetCriterion()
+    transform = eqv.Rotation()
+    transform_params = dict(angle = 50.0)
+        
+    renormalize = lambda x: x / 2. + 0.5 
     
     for b in args.triplets:
         output_path = args.savefig.format(b)
@@ -18,22 +25,31 @@ def main(args):
 
         images = torch.stack([dataset[idx][0] for idx in index])
         batch = batch_frontend(images.to(args.device))
-        recon_combined, recons, masks, slots, attn = map(lambda t: t.cpu(), model(batch))
+
+        slots_init = model.slot_attention.slots_mu.expand(len(batch), model.num_slots, -1)
         
-        renormalize = lambda x: x / 2. + 0.5 
-        image, recon_combined, recons, masks, attn = [t.movedim(-3, -1) for t in [renormalize(batch).cpu(), renormalize(recon_combined), renormalize(recons), masks, attn]]
+        recon_combined, recons, masks, slots, attn = map(lambda t: t.cpu(), model(batch)) #, slots = slots_init))
+        recon_combined, recons, masks, image, attn = [t.movedim(-3, -1) for t in [renormalize(recon_combined), renormalize(recons), masks, renormalize(batch).cpu(), attn]]
+        
+        batch_aug = transform(batch, **transform_params)
+        image_aug = renormalize(batch_aug)
+        recon_combined_aug, recons_aug, masks_aug, slots_aug, attn_aug = map(lambda t: t.cpu(), model(batch_aug))#, slots = slots_init))
+        recon_combined_aug, recons_aug, masks_aug, image_aug, attn_aug = [t.movedim(-3, -1) for t in [renormalize(recon_combined_aug), renormalize(recons_aug), masks_aug, renormalize(batch_aug).cpu(), attn_aug]]
+        loss_aug = criterion(transform(masks.squeeze(-1), **transform_params), masks_aug.squeeze(-1))
+        print(loss_aug)
 
         fig, ax = plt.subplots(2 * len(index), 3 + args.num_slots, figsize=(15, 3 * len(index) ))
         for j in range(len(index)):
-            ax[j * 2, 0].imshow(image[j])
-            ax[j * 2, 0].set_title('Image')
-            ax[j * 2, 1].imshow(recon_combined[j])
-            ax[j * 2, 1].set_title('Recon.')
-            
-            for k, (name, masks_j) in enumerate(dict(masks = masks[j], attn = attn[j]).items()):
+            for k, (name, (image_j, recons_j, recon_combined_j, masks_j)) in enumerate(dict(orig = (image[j], recons[j], recon_combined[j], masks[j]), aug = (image_aug[j], recons_aug[j], recon_combined_aug[j], masks_aug[j])).items()):
                 K = j * 2 + k
+            
+                ax[K, 0].imshow(image_j)
+                ax[K, 0].set_title(f'Image [{name}]')
+                ax[K, 1].imshow(recon_combined_j)
+                ax[K, 1].set_title(f'Recon. [{name}]')
 
-                picture = recons[j] * masks_j + (1 - masks_j)
+                picture = recons_j * masks_j + (1 - masks_j)
+
                 entropy = -(masks_j * masks_j.clamp(min = 1e-12).log()).sum(dim = 0).squeeze(-1)
                 
                 ax[K, 2].imshow(entropy, cmap = 'jet')

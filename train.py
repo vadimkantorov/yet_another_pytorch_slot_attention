@@ -97,12 +97,12 @@ def main(args):
             optimizer.param_groups[0]['lr'] = learning_rate
             
             images = batch_frontend(images.to(args.device))
-            recon_combined, recons, masks, slots, attn = model(images)
+            recon_combined, recons, masks, slots, attn_slotwise = model(images)
             loss = criterion(recon_combined, images)
             loss_item = float(loss)
             total_loss += loss_item
 
-            del recons, masks, slots
+            del recons, masks, slots, slots, attn_slotwise
 
             optimizer.zero_grad()
             loss.backward()
