@@ -6,9 +6,10 @@ import functools
 import torch
 import torch.nn as nn
 
-import models
 import clevr
 import coco
+import models
+import eqv
 
 def rename_and_transpose_tfcheckpoint(ckpt):
     # converted with https://github.com/vadimkantorov/tfcheckpoint2pytorch
@@ -71,6 +72,9 @@ def build_dataset(args, filter = None):
 
     return dataset, collate_fn, batch_frontend
 
+def build_criterion(args):
+    return nn.MSELoss()
+
 def main(args):
     os.makedirs(args.model_dir, exist_ok = True)
  
@@ -78,7 +82,7 @@ def main(args):
     
     model = build_model(args)
 
-    criterion = nn.MSELoss()
+    criterion = build_criterion(args)
 
     data_loader = torch.utils.data.DataLoader(dataset, batch_size = args.batch_size, num_workers = args.num_workers, collate_fn = collate_fn, shuffle = True)
 
