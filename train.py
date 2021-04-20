@@ -11,33 +11,6 @@ import coco
 import models
 import eqv
 
-def rename_and_transpose_tfcheckpoint(ckpt):
-    # converted with https://github.com/vadimkantorov/tfcheckpoint2pytorch
-    # checkpoint format: https://www.tensorflow.org/guide/checkpoint
-   
-    replace = {
-        'network/layer_with_weights-0/': '',
-        '/.ATTRIBUTES/VARIABLE_VALUE': '',
-        '/': '_',
-        'encoder_cnn_layer_with_weights-': 'encoder_cnn.',
-        'decoder_cnn_layer_with_weights-': 'decoder_cnn.',
-        'slot_attention_': 'slot_attention.',
-        'mlp_layer_with_weights-': 'mlp.',
-        'encoder_pos_': 'encoder_pos.',
-        'decoder_pos_': 'decoder_pos.',
-        '_kernel': '.weight',
-        '_bias': '.bias',
-        '_gamma': '.weight',
-        '_beta': '.bias',
-        'slot_attention.gru.weight': 'slot_attention.gru.weight_ih',
-        'slot_attention.gru_recurrent.weight': 'slot_attention.gru.weight_hh'
-    }
-    
-    ckpt = {functools.reduce(lambda acc, from_to: acc.replace(*from_to), replace.items(), k) : v for k, v in ckpt.items() if k.startswith('network/layer_with_weights-0/') and k.endswith('.ATTRIBUTES/VARIABLE_VALUE') and '.OPTIMIZER_SLOT' not in k}
-    ckpt = { ('.'.join(k.split('.')[:-2] + [str(int(k.split('.')[-2]) * 2), k.split('.')[-1]]) if 'encoder_cnn.' in k or 'decoder_cnn.' in k or k.startswith('mlp.') or 'slot_attention.mlp.' in k else k) : v for k, v in ckpt.items() }
-    ckpt['slot_attention.gru.bias_ih'], ckpt['slot_attention.gru.bias_hh'] = ckpt.pop('slot_attention.gru.bias').unbind()
-    return {k : v.permute(3, 2, 0, 1) if v.ndim == 4 else v.t() if v.ndim == 2 else v for k, v in ckpt.items()}
-
 def build_model(args):
     model = models.SlotAttentionAutoEncoder(resolution = args.resolution, num_slots = args.num_slots, num_iter = args.num_iter, hidden_dim = args.hidden_dim).to(args.device)
         
@@ -73,7 +46,16 @@ def build_dataset(args, filter = None):
     return dataset, collate_fn, batch_frontend
 
 def build_criterion(args):
-    return nn.MSELoss()
+    reconstruction = nn.MSELoss()
+    equivariance = eqv.EquivarianceLoss()
+
+    if args.loss_scale_equivariance == 0 and args.loss_scale_reconstruction > 0:
+        return lambda true_images, pred_images, **kwargs: args.loss_reconstruction * reconstruction(pred_images, true_images)
+
+    return lambda true_images, pred_images, aug_pred_masks, pred_aug_masks: args.loss_reconstruction * reconstruction(pred_images, true_images) + args.loss_scale_equivariance * equivariance(pred_aug_masks, aug_pred_masks)
+
+def sample_affine_transform_params(batch_size = 1, angle_min = -20, angle_max = 20):
+    return dict(angle = angle_min + float(torch.rand(batch_size)) * (angle_max - angle_min))
 
 def main(args):
     os.makedirs(args.checkpoint_dir, exist_ok = True)
@@ -83,6 +65,8 @@ def main(args):
     model = build_model(args)
 
     criterion = build_criterion(args)
+
+    aug_transform = eqv.AffineTransform()
 
     data_loader = torch.utils.data.DataLoader(dataset, batch_size = args.batch_size, num_workers = args.num_workers, collate_fn = collate_fn, shuffle = True)
 
@@ -97,16 +81,22 @@ def main(args):
 
         for i, (images, extra) in enumerate(data_loader):
             learning_rate = (args.learning_rate * (iteration / args.warmup_steps) if iteration < args.warmup_steps else args.learning_rate) * (args.decay_rate ** (iteration / args.decay_steps))
-
             optimizer.param_groups[0]['lr'] = learning_rate
+           
+            transform_params = sample_affine_transform_params()
+
+            true_images = batch_frontend(images.to(args.device))
+            aug_images = aug_transform(true_images, **transform_params))
+
+            pred_images, _, pred_masks,     _, _ = model(true_images)
+            _, _,           pred_aug_masks, _, _ = model(aug_images)
             
-            images = batch_frontend(images.to(args.device))
-            recon_combined, recons, masks, slots, attn_slotwise = model(images)
-            loss = criterion(recon_combined, images)
+            aug_pred_masks = aug_transform(pred_masks, **transform_params)
+            
+            loss = criterion(pred_images, true_images, aug_pred_masks = aug_pred_masks, pred_aug_masks = pred_aug_masks)
+            
             loss_item = float(loss)
             total_loss += loss_item
-
-            del recons, masks, slots, slots, attn_slotwise
 
             optimizer.zero_grad()
             loss.backward()
@@ -121,6 +111,33 @@ def main(args):
         if not epoch % args.checkpoint_epoch_interval:
             model_state_dict = model.module.state_dict() if isinstance(model, nn.DataParallel) else model.state_dict()
             torch.save(dict(model_state_dict = model_state_dict), os.path.join(args.checkpoint_dir, args.checkpoint_pattern.format(epoch = epoch)))
+
+def rename_and_transpose_tfcheckpoint(ckpt):
+    # converted with https://github.com/vadimkantorov/tfcheckpoint2pytorch
+    # checkpoint format: https://www.tensorflow.org/guide/checkpoint
+   
+    replace = {
+        'network/layer_with_weights-0/': '',
+        '/.ATTRIBUTES/VARIABLE_VALUE': '',
+        '/': '_',
+        'encoder_cnn_layer_with_weights-': 'encoder_cnn.',
+        'decoder_cnn_layer_with_weights-': 'decoder_cnn.',
+        'slot_attention_': 'slot_attention.',
+        'mlp_layer_with_weights-': 'mlp.',
+        'encoder_pos_': 'encoder_pos.',
+        'decoder_pos_': 'decoder_pos.',
+        '_kernel': '.weight',
+        '_bias': '.bias',
+        '_gamma': '.weight',
+        '_beta': '.bias',
+        'slot_attention.gru.weight': 'slot_attention.gru.weight_ih',
+        'slot_attention.gru_recurrent.weight': 'slot_attention.gru.weight_hh'
+    }
+    
+    ckpt = {functools.reduce(lambda acc, from_to: acc.replace(*from_to), replace.items(), k) : v for k, v in ckpt.items() if k.startswith('network/layer_with_weights-0/') and k.endswith('.ATTRIBUTES/VARIABLE_VALUE') and '.OPTIMIZER_SLOT' not in k}
+    ckpt = { ('.'.join(k.split('.')[:-2] + [str(int(k.split('.')[-2]) * 2), k.split('.')[-1]]) if 'encoder_cnn.' in k or 'decoder_cnn.' in k or k.startswith('mlp.') or 'slot_attention.mlp.' in k else k) : v for k, v in ckpt.items() }
+    ckpt['slot_attention.gru.bias_ih'], ckpt['slot_attention.gru.bias_hh'] = ckpt.pop('slot_attention.gru.bias').unbind()
+    return {k : v.permute(3, 2, 0, 1) if v.ndim == 4 else v.t() if v.ndim == 2 else v for k, v in ckpt.items()}
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -142,6 +159,8 @@ if __name__ == '__main__':
     parser.add_argument('--hidden-dim', default=64, type=int, help='hidden dimension size')
     parser.add_argument('--resolution', type = int, nargs = 2, default = (128, 128))
     parser.add_argument('--crop', type = int, nargs = 4, default = (29, 221, 64, 256))
+    parser.add_argument('--loss-scale-reconstruction', type = float, default = 1.0)
+    parser.add_argument('--loss-scale-equivariance', type = float, default = 0.0)
    
     parser.add_argument('--checkpoint-dir', default='./checkpoints', type=str, help='where to save models' )
     parser.add_argument('--checkpoint')

@@ -8,7 +8,7 @@ import torch.nn as nn
 import torchvision.transforms.functional as Tfunc
 import kornia as K
 
-class Rotation(nn.Module):
+class AffineTransform(nn.Module):
     # https://github.com/monniert/dti-clustering/blob/b57a77d4c248b16b4b15d6509b6ec493c53257ef/src/model/transformer.py#L281
     # https://github.com/kornia/kornia/blob/3606cf9c3d1eb3aabd65ca36a0e7cb98944c01ba/kornia/geometry/transform/imgwarp.py#L122
     def forward(self, x : 'NCHW', angle = 0.0):
@@ -27,7 +27,7 @@ def dice_loss(inputs : 'probs', targets : 'probs'):
     denominator = (inputs + targets).sum(-1)
     return 1 - (numerator + 1) / (denominator + 1)
 
-class SetCriterion(nn.Module):
+class EquivarianceLoss(nn.Module):
     def linear_row2col_assignment(self, C):
         return torch.stack([torch.as_tensor(c[r.argsort()]) for r, c in map(scipy.optimize.linear_sum_assignment, C.cpu())]).to(C.device)
 
@@ -38,18 +38,18 @@ class SetCriterion(nn.Module):
         row_perm = R2C.argsort(dim = 1)
         return outputs.gather(1, row_perm[..., None, None].expand(-1, -1, *outputs.shape[-2:]))
         
-    def forward(self, outputs : 'BKHW', targets : 'BKHW'):
+    def forward(self, aug_masks: 'BKHW', pred_masks : 'BKHW'):
         # TODO: feature loss?
-        cost_matrix : 'BKK' = self.compute_matching_cost_matrix(outputs, targets)
+        cost_matrix : 'BKK' = self.compute_matching_cost_matrix(pred_masks, aug_masks)
         R2C : 'BK' = self.linear_row2col_assignment(cost_matrix)
         
-        return dice_loss(self.permute_rows(outputs, R2C) > 0.5, targets > 0.5).sum()
+        return dice_loss(self.permute_rows(aug_masks, R2C), pred_masks).sum()
 
 if __name__ == '__main__':
     img_path = 'CLEVR_with_masks/images/CLEVR6val/CLEVR_CLEVR6val_070019.png'
     
     model = nn.Identity()
-    criterion = SetCriterion()
+    criterion = EquivarianceLoss()
     transform = Rotation()
     
     batch = torch.as_tensor(cv2.imread(img_path)).movedim(-1, 0).flip(0).unsqueeze(0) / 255.0
