@@ -233,12 +233,12 @@ class PositionEmbeddingLearned(nn.Module):
 
 
 class SlotAttentionAutoEncoder(nn.Module):
-    def __init__(self, resolution = (128, 128), num_slots = 8, num_iterations = 3, decoder_initial_size = (8, 8), hidden_dim = 64, interpolate_mode = 'bilinear', position_encoding_layer = PositionEmbeddingImplicit):
+    def __init__(self, resolution = (128, 128), num_slots = 8, num_iter = 3, decoder_initial_size = (8, 8), hidden_dim = 64, interpolate_mode = 'bilinear', position_encoding_layer = PositionEmbeddingImplicit):
         super().__init__()
         self.interpolate_mode = interpolate_mode
         self.resolution = resolution
         self.num_slots = num_slots
-        self.num_iterations = num_iterations
+        self.num_iter = num_iter
         self.decoder_initial_size = decoder_initial_size
         self.hidden_dim = hidden_dim
         
@@ -253,7 +253,7 @@ class SlotAttentionAutoEncoder(nn.Module):
         )
         
         self.slot_attention = SlotAttention(
-            num_iter = self.num_iterations,
+            num_iter = self.num_iter,
             num_slots = self.num_slots,
             input_size = self.hidden_dim,
             slot_size = self.hidden_dim,

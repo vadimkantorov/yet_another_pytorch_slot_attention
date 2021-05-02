@@ -16,8 +16,8 @@ def main(args):
     test_dataloader = torch.utils.data.DataLoader(test_set, batch_size = args.batch_size, shuffle = False, num_workers = args.num_workers)
 
     ari = []
-    for i, batch in enumerate(test_dataloader):
-        images, mask_true = map(batch.get, ['image', 'mask'])
+    for i, (images, meta) in enumerate(test_dataloader):
+        mask_true = torch.stack(t['mask'] for t in meta)
        
         images = frontend(images.to(args.device), interpolate_mode = 'nearest')
         mask_true = frontend(mask_true[:, 1:].to(device = args.device, dtype = torch.float32), normalize = False, interpolate_mode = 'nearest')
